@@ -1335,6 +1335,52 @@ between the two with `FromVector3`/`FromRotation`/`FromTransform`, never by
 manually reordering or negating components, and never assume a value copied
 from the Details panel is already in the coordinate system your code expects.
 
+### 25. UEFN 43.00 deprecations, renames and removals
+
+**CONFIRMED — Epic's 43.00 release notes**
+(https://dev.epicgames.com/documentation/fortnite/43-00-fortnite-ecosystem-updates-and-release-notes).
+Check the digest for the exact current signature of each symbol below.
+
+- `tag_view` is deprecated; use `FindCreativeObjectsWithTag`. Deprecated code
+  still compiles but warns.
+- `FieldOfViewDegrees` on `perspective_camera_component` is renamed
+  `FieldOfView`, and Scene Graph camera angles are now in radians (Verse
+  standard). A leftover degree value is not an error, it is a wrong angle.
+- `GlobalModifierPosition` and `VisualModifierPosition` are removed. Use
+  `PreCameraModifiers`, `PostCameraModifiers` or `PresentationCameraModifiers`.
+- The `weak_map` limit is now 6 per UEFN project module (it was 4).
+- Built-in entity classes, including the weapon templates, are no longer
+  `<final>`. Code that avoided subclassing them can now subclass them.
+- The Progression API is out of Experimental. `/UnrealEngine.com/HealthPipeline`
+  and `/Fortnite.com/FortHealthPipeline` are Experimental modules; Scene Graph
+  cameras in private versions need `{ /Fortnite.com/SceneGraphCameras }`.
+- Teleporter devices support props; `TeleportPropEvent` fires when a prop
+  teleports.
+
+**Rule:** after moving a project to 43.00, run the analyzer and fix the new
+warnings and errors listed here before assuming a wrong camera angle or a
+missing symbol is a logic bug.
+
+### 26. UEFN 43.00 new diagnostics
+
+**CONFIRMED — Epic's 43.00 release notes** (same URL as rule 25).
+
+- **Unknown member on qualified access.** `(Value.(Class)Member)` can fail
+  when the member moved to a parent class. Remove the qualifier or name the
+  parent class.
+- **Extension-method conflict.** Material classes that now inherit from each
+  other can have clashing extension methods. If the methods are identical,
+  delete the child's copy; if they differ, rename them.
+- **Component already owned (warning, future error).** Adding a component
+  that belongs to another entity now logs a warning. Remove it from its
+  current entity first, or create a new component.
+- **Redirector reference (deprecation warning).** Renaming or moving an asset
+  that Verse uses leaves a redirector; Verse now respects it and warns until
+  you update the reference.
+
+**Rule:** treat these as real diagnostics to fix, not noise. The component
+warning in particular becomes a hard error in a future release.
+
 ## Visibility and access errors
 
 ### Public member depends on a non-public type

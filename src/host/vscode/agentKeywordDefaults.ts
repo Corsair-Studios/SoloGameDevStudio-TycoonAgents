@@ -46,7 +46,7 @@ export const DEFAULT_AGENT_KEYWORDS: Record<string, string> = {
   ...toKeywordMap(LEAD_AGENTS),
   ...toKeywordMap(REVIEWER_AGENTS),
   ...toKeywordMap(FOREIGN_LLM_AGENTS),
-  "verse-expert": "verse|uefn|fortnite|device|island|creative|digest",
+  "verse-expert": "verse|uefn|fortnite|device|island|creative|digest|pcg|procedural|biome",
   "uefn-auditor": "auditor|lint|deprecation|deprecated|compliance",
   "web-qa": "playwright|browser|qa|screenshot|accessibility|e2e|web",
   godot: "godot|gdscript|scene|node|signal|tscn|gdextension",

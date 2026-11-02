@@ -100,6 +100,10 @@
   <p><code>verse-lsp.exe</code> &mdash; the actual analyzer engine behind <code>uefn_verse_check</code> &mdash; ships inside Epic's own Verse VS Code extension rather than as a separate download. When <code>VERSE_LSP_PATH</code> isn't set, discovery searches for that extension across every supported IDE's extensions folder: VS Code, VS Code Insiders, Cursor, Antigravity, Windsurf, and a remote <code>vscode-server</code> install.</p>
   <p>No VS Code-family IDE on this machine at all? You don't need to install one just for the analyzer: download Epic's Verse extension's <code>.vsix</code> directly from the VS Code Marketplace website, extract it (a <code>.vsix</code> is a zip archive), and point <code>VERSE_LSP_PATH</code> at the <code>verse-lsp.exe</code> inside the extracted folder.</p>
 </div>
+<div class="callout note">
+  <p class="callout-label">Epic's MCP server</p>
+  <p>If agents can't reach Epic's official UEFN MCP server, open <strong>Edit &gt; Editor Preferences &gt; Agentic Workflows &gt; Model Context Protocol</strong> in UEFN and press <strong>Start Server</strong> if it isn't running. The default port is 8000; if another service uses it, change <strong>Server Port Number</strong> there and update the URL of the <code>unreal-engine-mcp</code> entry (your project's <code>.mcp.json</code> / MCP settings) to the same port. If the editor stutters or hangs during a call, Epic lists that as a known issue; keep requests small, and for PCG or visual checks (Scene Capture) ask for one narrow step at a time.</p>
+</div>
 <div class="callout tip">
   <p class="callout-label">Tip</p>
   <p>The UEFN MCP chip also needs <code>node</code> v18+ on your PATH — the MCP client launches Power Tools' server through Node. Run <code>node --version</code> in a terminal to check.</p>

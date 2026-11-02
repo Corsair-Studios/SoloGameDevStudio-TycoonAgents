@@ -48,6 +48,33 @@ authoritative surface for available classes, devices, and APIs. UEFN project
 presence is confirmed via `.verse` files, a `.uproject`, or a `Content/Verse/`
 directory.
 
+## UEFN 43.00+
+
+Verse and Scene Graph changes in the 43.00 release (still check the digests,
+which win over this list):
+
+- `tag_view` is deprecated; use `FindCreativeObjectsWithTag`.
+- Built-in entity classes, including the weapon templates, are no longer
+  `<final>`, so they can be subclassed.
+- Scene Graph cameras: `FieldOfViewDegrees` on `perspective_camera_component`
+  is now `FieldOfView`, and camera angles are in radians. `GlobalModifierPosition`
+  and `VisualModifierPosition` are removed; use `PreCameraModifiers`,
+  `PostCameraModifiers` or `PresentationCameraModifiers`.
+- The `weak_map` limit is 6 per project module (was 4).
+- New compile errors: qualified member access can report "unknown member" if
+  the member moved to a parent class (drop the qualifier or name the parent);
+  material classes that now inherit from each other can have conflicting
+  extension methods (remove an identical copy, rename differing ones).
+- Adding a component that another entity already owns now warns, and will
+  become an error. Remove it from the current owner first, or create a new one.
+- Verse respects asset redirectors: references through a redirector produce a
+  deprecation warning. Update the references.
+- The Progression API is out of Experimental.
+- Experimental modules: `{ /UnrealEngine.com/HealthPipeline }` and
+  `{ /Fortnite.com/FortHealthPipeline }`; `{ /Fortnite.com/SceneGraphCameras }`
+  is needed for Scene Graph cameras in private versions.
+- Teleporter devices support props; use `TeleportPropEvent`.
+
 ## Common-errors pre-flight reference
 
 `verse-common-errors.md` in this skill folder is a last resort: consult it

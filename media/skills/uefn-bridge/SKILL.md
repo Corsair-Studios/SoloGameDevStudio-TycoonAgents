@@ -141,6 +141,18 @@ everything is a classic actor.
   Epic's `GetVisibleActors` returns only viewport-visible actors (1,336 of
   44,753 on the real project) as bare `refPath` strings with no labels,
   no locations, and no filtering.
+- **Visual checks → Epic's Scene Capture toolset by default** (added in
+  43.00; returns images to the agent). Use it to look at the level or a
+  device after a change instead of guessing from property reads.
+- **Prefab, Player State and Curve Atlas toolsets → ALWAYS
+  `unreal-engine-mcp`** (all added in 43.00). We have no equivalent.
+- **Classic devices → placing and option edits via Epic's `DeviceToolset`**
+  (43.00 added classic-device support: options can be listed and set, with
+  the same validation as the Details panel). Reading or bulk-editing many
+  existing classic actors stays with `uefn-bridge`.
+- **The live `tools/list` (and `list_toolsets` / `describe_toolset`) from
+  Epic's server overrides this table.** If a toolset or tool named here is
+  missing or renamed there, trust the live listing.
 
 Full measured evidence: [`docs/UEFN-MCP-COMPARISON.md`](../../../docs/UEFN-MCP-COMPARISON.md).
 
@@ -160,6 +172,86 @@ Full measured evidence: [`docs/UEFN-MCP-COMPARISON.md`](../../../docs/UEFN-MCP-C
   returned `"Disconnected"` when idle.
 - Epic notes coordinate-system translation issues between XYZ and
   Left-Up-Forward.
+
+### Epic MCP setup (UEFN 43.00)
+
+1. In UEFN open **Edit > Editor Preferences > Agentic Workflows > Model
+   Context Protocol** (MCP settings are editor-wide) and
+   make sure the server is running; press **Start Server** if it is not.
+2. The default port is **8000**. If another service uses it, change
+   **Server Port Number** in the same panel.
+3. In a TycoonAgents project, use the pack's `unreal-engine-mcp` entry
+   (`media/mcp/catalog.json`, `http://127.0.0.1:8000/mcp` by default) rather
+   than the `.mcp.json` that **Generate Client Config** writes into the
+   FortniteGame folder. If you change **Server Port Number** in UEFN, update
+   the URL of the `unreal-engine-mcp` entry (the project's .mcp.json / MCP
+   settings) to the same port.
+4. Epic's toolsets are discovered through its toolset registry; call
+   `list_toolsets` then `describe_toolset` before the first real call.
+
+### Hangs and call hygiene
+
+Epic documents that MCP tool calls can make the editor hitch or hang (under
+investigation). Keep calls small and targeted, prefer one narrow query to a
+broad sweep, and check session status (`SessionToolset`
+`GetSessionStatus`) before any long operation such as a big batch, a play
+session, or a large Python run.
+
+### Exec Python (Epic)
+
+43.00 adds an Exec Python tool that runs with the full Unreal Python API
+and has no safety checks. The editor freezes until the script ends, and
+content made this way is not checked against publishing rules.
+
+- Prefer a purpose-built tool (a toolset call, or `uefn-bridge`) whenever one
+  exists; use Exec Python only for actions no tool supports or for
+  hundreds of actions where you can wait.
+- Have the agent call `read_me` first for the session rules, and test on a
+  small batch (about 10 items) before scaling up.
+- TycoonAgents guidance (not an Epic requirement): wrap edits in an undoable
+  editor transaction so the user can Ctrl+Z them.
+- Confirm with the user before any destructive script (deleting, overwriting,
+  or mass-modifying actors or assets). Save work first.
+- Python toolsets use XYZ coordinates, not UEFN's Left-Up-Forward (LUF);
+  check converted positions in the level.
+
+### Programmatic scripting sandbox (MCP Python)
+
+Scripts run through Epic's programmatic scripting toolset (the page names
+`ProgrammaticToolset` and `PythonScriptingTools`) are sandboxed:
+
+- No `unreal` module. Only `json`, `math`, `datetime`, `copy`, `re` and
+  `time` may be imported, at the top of the script.
+- Define `async def run():` and return a dictionary. Wait with
+  `await sleep(seconds)` (max 10 seconds per call); `time.sleep` does not work.
+- Call `get_execution_environment` first for the exact rules of the editor
+  build. Scripts written before 43.00 need `async def run():` and an `await`
+  before each `execute_tool` call.
+
+### PCG (procedural content generation) via Epic MCP
+
+43.00 adds a PCG toolset that lets an agent create and edit PCG graphs.
+For repeatable spatial systems (vegetation scatter, city blocks, roads,
+biomes), not one-off placement:
+
+1. Confirm the Epic MCP server is running.
+2. Read the skill first: list the available skills, then read
+   `Skill_PCGGraphGeneration`. Reading it is a required part of session
+   setup. Other skills the page names include `Skill_PCGShapeGrammarDefinition`,
+   `Skill_PCGBiomeCore` (needs the **PCG Biome Core** plugin enabled),
+   `Skill_PCGBiomeCoreRefinement` and `Skill_InstantLevelOperations`.
+3. Reference existing example graphs (PCG folder: Epic > PCG > SampleContent
+   and Epic > PCG > Primitives > Examples) and duplicate and adapt a close one
+   instead of building from scratch.
+4. Have the user select the relevant assets or actors first; propose a plan
+   or graph review before executing; then edit incrementally and let the user
+   course-correct.
+5. To inspect PCG attributes use the **Data View** tool by name. It returns
+   one node's output from the graph's last run; the first request only turns
+   inspection on, so run the graph again, and ask for a specific attribute or
+   point range. Nodes that run more than once (inside loops) are unsupported.
+6. Keep requests narrow (one graph at a time); most PCG tools return full
+   results.
 
 ## Available MCP Tools
 
