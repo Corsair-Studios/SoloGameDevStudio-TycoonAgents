@@ -18300,7 +18300,7 @@ function themeAnimPreviewDraw(player) {
 // never through this picker.
 
   /** Picker UI state, kept across Agents-screen re-renders. */
-  var providerAgentsState = { open: false, checked: {}, others: [], formOpen: false, message: "", busy: false, draft: {} };
+  var providerAgentsState = { open: false, checked: {}, others: [], formOpen: false, message: "", busy: false, draft: {}, role: "worker", workers: [], wDraft: { provider: "codex" } };
   /** Latest { packId, picker, error } from the host (providerAgents message), or null before the first reply. */
   var lastProviderAgents = null;
 
@@ -18389,6 +18389,205 @@ function themeAnimPreviewDraw(player) {
     return inp;
   }
 
+  /** Providers offered for a new agent: label, preset vendor, and the pack agent that proves the provider ships. */
+  var BRIDGE_WORKER_PROVIDERS = [
+    { value: "codex", label: "Codex", vendor: "openai", packAgent: "codex-reviewer" },
+    { value: "gemini", label: "Gemini", vendor: "google", packAgent: "gemini-reviewer" },
+    { value: "kimi", label: "Kimi", vendor: "moonshot", packAgent: "kimi-reviewer" },
+    { value: "grok", label: "Grok", vendor: "xai", packAgent: "grok-reviewer" },
+    { value: "mistral", label: "Mistral", vendor: "mistral", packAgent: "mistral-reviewer" },
+    { value: "other", label: "Other (OpenAI-compatible endpoint)", vendor: "custom", packAgent: "" }
+  ];
+
+  /** Kebab-case agent id from a free-text name; mirrors agentIdFromName in src/core/providerWorkingAgent.ts (host re-validates). */
+  function bridgeAgentIdFromName(name) {
+    return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/g, "");
+  }
+
+  function bridgeSelectInput(name, options, value) {
+    const sel = document.createElement("select");
+    sel.className = "bridge-other-input bridge-worker-select";
+    sel.name = name;
+    options.forEach(function (o) {
+      const opt = document.createElement("option");
+      opt.value = o.value;
+      opt.textContent = o.label;
+      if (o.value === value) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    return sel;
+  }
+
+  /**
+   * "Working agent" form (the default role): provider, name, label, role, keywords and model. Adds to
+   * providerAgentsState.workers; the install button sends them as selection.workers.
+   */
+  function buildWorkerAgentForm(picker) {
+    const st = providerAgentsState;
+    const d = st.wDraft;
+    const form = document.createElement("div");
+    form.className = "bridge-other-form bridge-worker-form";
+    form.setAttribute("data-bridge-worker-form", "");
+    const have = {};
+    (picker.models || []).forEach(function (m) { have[m.agentId] = true; });
+    const providers = BRIDGE_WORKER_PROVIDERS.filter(function (p) { return p.packAgent === "" || have[p.packAgent]; });
+    if (!providers.some(function (p) { return p.value === d.provider; })) d.provider = providers.length ? providers[0].value : "other";
+    const prov = providers.filter(function (p) { return p.value === d.provider; })[0] || providers[0];
+
+    const help = document.createElement("p");
+    help.className = "bridge-picker-note";
+    help.textContent = "A working agent takes on tasks and does the work through the provider you pick. Choose Reviewer above for a read-only second opinion instead.";
+    form.appendChild(help);
+
+    const fProv = bridgeSelectInput("provider", providers.map(function (p) { return { value: p.value, label: p.label }; }), d.provider);
+    fProv.addEventListener("change", function () { d.provider = fProv.value; d.model = ""; d.modelCustom = false; renderRoutingModal(); });
+    form.appendChild(bridgeField("Provider", fProv));
+
+    const fName = bridgeTextInput("name", "artist", 80);
+    const fLabel = bridgeTextInput("label", "Optional display label", 60);
+    const fRole = bridgeTextInput("role", "What this agent is for", 240);
+    const fKw = bridgeTextInput("keywords", "Routing keywords, e.g. art|sprite|texture", 200);
+    const idHint = document.createElement("span");
+    idHint.className = "bridge-other-hint";
+    function idHintText() {
+      const id = bridgeAgentIdFromName(d.name);
+      return id ? "Agent id: " + id : "Required. The id is made from the name in lower-case with hyphens.";
+    }
+    idHint.textContent = idHintText();
+    [[fName, "name"], [fLabel, "label"], [fRole, "role"], [fKw, "keywords"]].forEach(function (pair) {
+      pair[0].value = d[pair[1]] || "";
+      pair[0].addEventListener("input", function () { d[pair[1]] = pair[0].value; if (pair[1] === "name") idHint.textContent = idHintText(); });
+    });
+    const nameWrap = bridgeField("Name", fName, "");
+    nameWrap.appendChild(idHint);
+    form.appendChild(nameWrap);
+    form.appendChild(bridgeField("Display label", fLabel, "Optional."));
+    form.appendChild(bridgeField("Role", fRole, "Optional. One line."));
+    form.appendChild(bridgeField("Keywords", fKw, "Optional. Words in a task that send it to this agent."));
+
+    // Model: the same catalog the Agents routing editor offers; Custom... takes any id.
+    const routingPresets = (typeof lastRoutingPayload !== "undefined" && lastRoutingPayload && lastRoutingPayload.presets) || null;
+    const presetModels = (routingPresets && routingPresets.models) || [];
+    const models = prov.vendor === "custom" ? [] : presetModels.filter(function (m) { return String(m.vendor || "").toLowerCase() === prov.vendor; });
+    if (models.length > 0 && !d.modelCustom) {
+      const fallback = (typeof defaultModelPresetForVendor === "function" && defaultModelPresetForVendor(routingPresets, prov.vendor)) || models[0];
+      if (!d.model || !models.some(function (m) { return m.id === d.model; })) d.model = fallback.id;
+      const opts = models.map(function (m) { return { value: m.id, label: m.label || m.id }; });
+      opts.push({ value: "__custom__", label: "Custom…" });
+      const fModelSel = bridgeSelectInput("model", opts, d.model);
+      fModelSel.addEventListener("change", function () {
+        if (fModelSel.value === "__custom__") { d.model = ""; d.modelCustom = true; renderRoutingModal(); return; }
+        d.model = fModelSel.value;
+      });
+      form.appendChild(bridgeField("Model", fModelSel));
+    } else {
+      const fModel = bridgeTextInput("model", prov.vendor === "custom" ? "llama3" : "model id (blank = provider default)", 120);
+      fModel.value = d.model || "";
+      fModel.addEventListener("input", function () { d.model = fModel.value; });
+      form.appendChild(bridgeField("Model", fModel, prov.vendor === "custom" ? "Required. The model id your endpoint expects." : ""));
+      if (models.length > 0) {
+        const back = document.createElement("button");
+        back.type = "button";
+        back.className = "link-button";
+        back.textContent = "Choose from list";
+        back.addEventListener("click", function () { d.model = ""; d.modelCustom = false; renderRoutingModal(); });
+        form.appendChild(back);
+      }
+    }
+
+    if (prov.vendor === "custom") {
+      const fUrlEnv = bridgeTextInput("endpointEnv", "OLLAMA_BASE_URL", 64);
+      const fKeyEnv = bridgeTextInput("apiKeyEnv", "OLLAMA_API_KEY (optional)", 64);
+      const fUrl = bridgeTextInput("baseUrl", "http://localhost:11434/v1 (optional)", 300);
+      [[fUrlEnv, "endpointEnv"], [fKeyEnv, "apiKeyEnv"], [fUrl, "baseUrl"]].forEach(function (pair) {
+        pair[0].value = d[pair[1]] || "";
+        pair[0].addEventListener("input", function () { d[pair[1]] = pair[0].value; });
+      });
+      form.appendChild(bridgeField("Base URL variable name", fUrlEnv, "Must end in _BASE_URL."));
+      form.appendChild(bridgeField("API key variable name", fKeyEnv, "Optional for a local server. Name only."));
+      form.appendChild(bridgeField("Base URL value", fUrl, "Optional. https, or http for localhost only. Stored on this machine, not in the project."));
+    }
+
+    const formErr = document.createElement("div");
+    formErr.className = "skill-install-error bridge-other-error";
+    formErr.setAttribute("role", "alert");
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "skill-btn";
+    addBtn.setAttribute("data-bridge-worker-add", "");
+    addBtn.textContent = "Add to list";
+    // Validates the form and, when valid, adds it to the list. Returns "" on success or the problem text.
+    function tryAddDraft() {
+      const spec = { provider: prov.value, name: (d.name || "").trim() };
+      if ((d.label || "").trim()) spec.label = d.label.trim();
+      if ((d.role || "").trim()) spec.role = d.role.trim();
+      if ((d.keywords || "").trim()) spec.keywords = d.keywords.trim();
+      if ((d.model || "").trim()) spec.model = d.model.trim();
+      if (prov.vendor === "custom") {
+        spec.endpointEnv = (d.endpointEnv || "").trim();
+        if ((d.apiKeyEnv || "").trim()) spec.apiKeyEnv = d.apiKeyEnv.trim();
+        if ((d.baseUrl || "").trim()) spec.baseUrl = d.baseUrl.trim();
+      }
+      const id = bridgeAgentIdFromName(spec.name);
+      const known = bridgeKnownAgentIds(picker);
+      let problem = "";
+      if (!spec.name) problem = "Enter a name for the agent.";
+      else if (!BRIDGE_SLUG_RE.test(id)) problem = "Name must give an id of 2-40 letters, digits and hyphens, starting with a letter.";
+      else if (BRIDGE_RESERVED_IDS.indexOf(id) !== -1 || known.has(id) || st.workers.some(function (w) { return bridgeAgentIdFromName(w.name) === id; })) problem = "An agent named \"" + id + "\" already exists. Choose another name.";
+      else if (prov.vendor === "custom" && !spec.model) problem = "Enter a model id.";
+      else if (prov.vendor === "custom" && !BRIDGE_ENDPOINT_ENV_RE.test(spec.endpointEnv)) problem = "Base URL variable must be upper case and end in _BASE_URL, e.g. OLLAMA_BASE_URL.";
+      else if (spec.apiKeyEnv && !BRIDGE_KEY_ENV_RE.test(spec.apiKeyEnv)) problem = "API key variable must look like OLLAMA_API_KEY (ends in _API_KEY, _KEY or _TOKEN).";
+      if (problem) return problem;
+      st.workers.push(spec);
+      st.wDraft = { provider: d.provider };
+      return "";
+    }
+    st.tryAddDraft = tryAddDraft;
+    st.draftTouched = function () { return !!((d.name || "").trim() || (d.label || "").trim() || (d.role || "").trim() || (d.keywords || "").trim()); };
+    addBtn.addEventListener("click", function () {
+      const problem = tryAddDraft();
+      if (problem) {
+        formErr.textContent = problem;
+        return;
+      }
+      renderRoutingModal();
+    });
+    form.appendChild(addBtn);
+    form.appendChild(formErr);
+    return form;
+  }
+
+  /** Role choice for what the picker adds: a Working agent (default) or a read-only Reviewer. */
+  function buildBridgeRoleChoice() {
+    const st = providerAgentsState;
+    const wrap = document.createElement("div");
+    wrap.className = "bridge-role-choice";
+    wrap.setAttribute("role", "radiogroup");
+    wrap.setAttribute("aria-label", "Add as");
+    [["worker", "Working agent"], ["reviewer", "Reviewer"]].forEach(function (pair) {
+      const lab = document.createElement("label");
+      lab.className = "bridge-role-option";
+      const r = document.createElement("input");
+      r.type = "radio";
+      r.name = "bridge-role";
+      r.value = pair[0];
+      r.checked = st.role === pair[0];
+      r.setAttribute("data-bridge-role", pair[0]);
+      r.addEventListener("change", function () {
+        if (!r.checked) return;
+        st.role = pair[0];
+        st.message = "";
+        renderRoutingModal();
+      });
+      const t = document.createElement("span");
+      t.textContent = pair[1];
+      lab.appendChild(r);
+      lab.appendChild(t);
+      wrap.appendChild(lab);
+    });
+    return wrap;
+  }
+
   /**
    * Build the "Add an agent from another provider" section for the Agents
    * screen (multi-provider mode). Collapsed until its button is clicked; state
@@ -18423,12 +18622,37 @@ function themeAnimPreviewDraw(player) {
     panel.className = "bridge-picker";
     panel.setAttribute("data-bridge-picker", pack.id);
 
+    const reviewerMode = st.role === "reviewer";
+    panel.appendChild(buildBridgeRoleChoice());
+    if (!reviewerMode) {
+      panel.appendChild(buildWorkerAgentForm(picker));
+      st.workers.forEach(function (w, idx) {
+        const li = document.createElement("div");
+        li.className = "bridge-picker-row bridge-picker-row--other";
+        li.setAttribute("data-bridge-worker-pending", bridgeAgentIdFromName(w.name));
+        const nm = document.createElement("span");
+        nm.className = "bridge-picker-name";
+        nm.textContent = (w.label || w.name) + " (working agent, will be added)";
+        li.appendChild(nm);
+        const rm = document.createElement("button");
+        rm.type = "button";
+        rm.className = "link-button";
+        rm.textContent = "Remove";
+        rm.addEventListener("click", function () {
+          st.workers.splice(idx, 1);
+          renderRoutingModal();
+        });
+        li.appendChild(rm);
+        panel.appendChild(li);
+      });
+    }
+
     const intro = document.createElement("p");
     intro.className = "bridge-picker-note";
     intro.textContent = picker.dispatcherHost
       ? "Tick the providers you want an agent for. This project runs bridges through the TycoonAgents dispatcher, so only the agent files are added; nothing is written to .mcp.json."
       : "Tick the providers you want an agent for. Each agent is added with the MCP server it needs; start a new Claude chat to load a newly added server. Keys are entered below under each agent and stay on this machine.";
-    panel.appendChild(intro);
+    if (reviewerMode) panel.appendChild(intro);
 
     const list = document.createElement("ul");
     list.className = "bridge-picker-list";
@@ -18511,9 +18735,9 @@ function themeAnimPreviewDraw(player) {
       li.appendChild(rm);
       list.appendChild(li);
     });
-    panel.appendChild(list);
+    if (reviewerMode) panel.appendChild(list);
 
-    // "Other (OpenAI-compatible endpoint)" form.
+    // "Other (OpenAI-compatible endpoint)" form (Reviewer role).
     const otherBtn = document.createElement("button");
     otherBtn.type = "button";
     otherBtn.className = "link-button bridge-other-toggle";
@@ -18522,9 +18746,9 @@ function themeAnimPreviewDraw(player) {
       st.formOpen = !st.formOpen;
       renderRoutingModal();
     });
-    panel.appendChild(otherBtn);
+    if (reviewerMode) panel.appendChild(otherBtn);
 
-    if (st.formOpen) {
+    if (reviewerMode && st.formOpen) {
       const form = document.createElement("div");
       form.className = "bridge-other-form";
       const help = document.createElement("p");
@@ -18597,12 +18821,22 @@ function themeAnimPreviewDraw(player) {
     installBtn.type = "button";
     installBtn.className = "skill-btn";
     installBtn.setAttribute("data-bridge-install", pack.id);
-    installBtn.textContent = st.busy ? "Adding…" : "Add selected";
+    installBtn.textContent = st.busy ? "Adding…" : (st.role === "reviewer" ? "Add selected" : "Add " + (st.workers.length === 1 ? "agent" : "agents"));
     installBtn.disabled = !!st.busy;
     installBtn.addEventListener("click", function () {
-      const agents = Object.keys(st.checked).filter(function (k) { return st.checked[k]; });
-      if (agents.length === 0 && st.others.length === 0) {
-        st.message = "Tick at least one provider first.";
+      const workerMode = st.role !== "reviewer";
+      // A filled but un-added form is added now (valid) or blocks with its field error (invalid): never dropped.
+      if (workerMode && typeof st.draftTouched === "function" && st.draftTouched()) {
+        const draftProblem = st.tryAddDraft();
+        if (draftProblem) {
+          st.message = draftProblem;
+          renderRoutingModal();
+          return;
+        }
+      }
+      const agents = workerMode ? [] : Object.keys(st.checked).filter(function (k) { return st.checked[k]; });
+      if (workerMode ? st.workers.length === 0 : (agents.length === 0 && st.others.length === 0)) {
+        st.message = workerMode ? "Fill in the form and click Add to list first." : "Tick at least one provider first.";
         renderRoutingModal();
         return;
       }
@@ -18615,7 +18849,7 @@ function themeAnimPreviewDraw(player) {
         id: pack.id,
         thirdParty: false,
         disclosures: [],
-        selection: { agents: agents, others: st.others.slice() },
+        selection: workerMode ? { workers: st.workers.slice() } : { agents: agents, others: st.others.slice() },
       });
     });
     actions.appendChild(installBtn);
@@ -18657,14 +18891,20 @@ function themeAnimPreviewDraw(player) {
     if (results && Array.isArray(results.agents)) {
       for (const a of results.agents) if (a.status === "error" || a.status === "skipped") notes.push(a.id + ": " + (a.error || a.status));
     }
-    if (ok && notes.length === 0) {
-      st.open = false;
+    // Notices (for example a Codex agent kept read-only because its role says review) must stay visible.
+    const hostNotices = results && Array.isArray(results.notices) ? results.notices.filter(function (n) { return typeof n === "string"; }) : [];
+    if (ok) {
       st.others = [];
+      st.workers = [];
+      st.wDraft = { provider: (st.wDraft && st.wDraft.provider) || "codex" };
       st.checked = {};
       st.draft = {};
+    }
+    if (ok && notes.length === 0 && hostNotices.length === 0) {
+      st.open = false;
       st.message = "";
     } else {
-      st.message = [error].concat(notes).filter(Boolean).join(" ");
+      st.message = [error].concat(notes, hostNotices).filter(Boolean).join(" ");
     }
     // The host also re-sends providerAgents, settings and routing after an add.
     renderRoutingModal();

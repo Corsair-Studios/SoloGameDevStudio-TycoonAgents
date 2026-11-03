@@ -443,8 +443,8 @@ export interface OtherAgentSpec {
   keywords?: string;
 }
 
-const SLUG_RE = /^[a-z][a-z0-9-]{1,39}$/;
-const RESERVED_IDS = new Set([
+export const SLUG_RE = /^[a-z][a-z0-9-]{1,39}$/;
+export const RESERVED_IDS = new Set([
   "orchestrator", "primary-agent", "reviewer", "tycoon",
   // Windows reserved device names (a file named con.md / nul.md misbehaves on Windows).
   "con", "prn", "aux", "nul",
@@ -490,12 +490,13 @@ export function validateOtherSpec(
   return problems;
 }
 
-function normalizeKeywords(raw: string | undefined, id: string): string {
+/** Keyword tokens (pipe, comma or space separated) as the `a|b|c` pattern; `fallback` is used when none survive. */
+export function normalizeKeywords(raw: string | undefined, id: string, fallback?: string[]): string {
   const toks = (raw ?? "")
     .split(/[|,\s]+/)
     .map((t) => t.trim().toLowerCase())
     .filter((t) => /^[a-z0-9][a-z0-9._-]*$/.test(t));
-  const base = toks.length > 0 ? toks : [id, "custom-endpoint", "foreign-review", "cross-vendor", "second-opinion"];
+  const base = toks.length > 0 ? toks : (fallback ?? [id, "custom-endpoint", "foreign-review", "cross-vendor", "second-opinion"]);
   return Array.from(new Set(base)).join("|");
 }
 

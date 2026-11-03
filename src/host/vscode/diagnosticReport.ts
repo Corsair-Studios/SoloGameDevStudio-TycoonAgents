@@ -219,6 +219,8 @@ export interface DiagnosticEngines {
   chips: DiagnosticEngineChip[];
   uefn: DiagnosticUefn | null;
   mcpServerIds: string[];
+  /** Server names defined in the user's Codex config (names only), shown marked as from Codex. */
+  codexMcpServerNames?: string[];
 }
 
 /**
@@ -282,7 +284,8 @@ function fmtTimestamp(epochMs: number | null | undefined): string {
 
 function fmtList(items: string[] | undefined | null, empty = "none"): string {
   if (!items || items.length === 0) return empty;
-  return items.map((i) => `\`${i}\``).join(", ");
+  // Neutralise characters that could break out of the code span or inject markdown/HTML.
+  return items.map((i) => `\`${String(i).replace(/[`<>|\r\n]/g, "_")}\``).join(", ");
 }
 
 function section(title: string, bodyLines: string[]): string {
@@ -442,7 +445,8 @@ export function buildDiagnosticReport(input: DiagnosticReportInput): string {
     } else {
       rows.push(line("UEFN project", NA));
     }
-    rows.push(line("Configured MCP servers", fmtList(e.mcpServerIds)));
+    const fromCodex = (e.codexMcpServerNames ?? []).filter((n) => !e.mcpServerIds.some((id) => id.toLowerCase() === n.toLowerCase())).map((n) => `${n} (Codex)`);
+    rows.push(line("Configured MCP servers", fmtList([...e.mcpServerIds, ...fromCodex])));
     return rows;
   });
 

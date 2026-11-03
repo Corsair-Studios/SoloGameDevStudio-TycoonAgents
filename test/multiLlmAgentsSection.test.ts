@@ -236,6 +236,15 @@ test('Agents modal (multi mode, Claude Code) shows "Add an agent from another pr
     toggle.click();
     await h.flush();
     assert.ok(h.doc.querySelector('[data-bridge-picker="multi-llm"]'), 'picker opens');
+    // Working agent is the default role: the form shows, the reviewer checklist does not.
+    assert.ok(h.doc.querySelector('[data-bridge-worker-form]'), 'working agent form is the default');
+    assert.equal((h.doc.querySelector('[data-bridge-role="worker"]') as any).checked, true);
+    assert.equal(h.doc.querySelector('[data-bridge-agent="codex-reviewer"]'), null);
+    const reviewerRadio = h.doc.querySelector('[data-bridge-role="reviewer"]') as any;
+    assert.ok(reviewerRadio, 'Reviewer stays available');
+    reviewerRadio.checked = true;
+    reviewerRadio.dispatchEvent(new h.win.Event('change', { bubbles: true }));
+    await h.flush();
     assert.ok(h.doc.querySelector('[data-bridge-agent="codex-reviewer"]'), 'codex row listed');
     assert.ok(h.doc.querySelector('[data-bridge-install="multi-llm"]'), 'Add selected button listed');
   } finally {

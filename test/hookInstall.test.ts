@@ -863,6 +863,7 @@ test("MCP_BRIDGE_HOOK_FILES is the four bridge scripts followed by the dispatche
     "localEnvStore.js",
     "tycoon-dispatcher-mcp.cjs",
     "dispatcherAdapters.cjs",
+    "pack-mcp-links.json",
     "dispatcherBridgeClient.cjs",
     "dispatcherClaudeChain.cjs",
     "codexRouting.cjs",

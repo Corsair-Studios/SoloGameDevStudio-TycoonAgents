@@ -615,6 +615,7 @@ export const MCP_BRIDGE_HOOK_FILES: ReadonlyArray<string> = [
   // requires, so a project-relative .mcp.json entry can launch it.
   "tycoon-dispatcher-mcp.cjs",
   "dispatcherAdapters.cjs",
+  "pack-mcp-links.json",
   "dispatcherBridgeClient.cjs",
   "dispatcherClaudeChain.cjs",
   "codexRouting.cjs",
@@ -1002,7 +1003,7 @@ const BRIDGE_REQUIRES: Readonly<Record<string, ReadonlyArray<string>>> = {
   "gemini-mcp-wrapper.cjs": ["bridge-result.cjs", "localEnvStore.js"],
   "claude-cli-mcp.cjs": ["bridge-result.cjs", "binDiscovery.cjs", "claudePermissionMode.cjs"],
   "openai-compatible-mcp.cjs": ["bridge-result.cjs", "localEnvStore.js"],
-  "dispatcherAdapters.cjs": ["binDiscovery.cjs", "claudePermissionMode.cjs", "localEnvStore.js"],
+  "dispatcherAdapters.cjs": ["binDiscovery.cjs", "claudePermissionMode.cjs", "localEnvStore.js", "pack-mcp-links.json"],
   "codex-mcp-launcher.cjs": ["bridge-result.cjs", "binDiscovery.cjs"],
   "codex-app-server-mcp.cjs": ["bridge-result.cjs", "codex-mcp-launcher.cjs"],
   "tycoon-dispatcher-mcp.cjs": [
@@ -1010,6 +1011,7 @@ const BRIDGE_REQUIRES: Readonly<Record<string, ReadonlyArray<string>>> = {
     "codexRouting.cjs",
     "delegationEnforcement.js",
     "dispatcherAdapters.cjs",
+    "pack-mcp-links.json",
     "dispatcherClaudeChain.cjs",
     "fallbackChain.js",
     "gateEvents.cjs",

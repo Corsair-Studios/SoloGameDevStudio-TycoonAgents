@@ -417,6 +417,49 @@ function makeNicknameMatcher(projectRoot) {
 }
 
 /**
+ * Tokens already attributed to a thread: the sum of `tokens` on its earlier
+ * codex SubagentStop records in activityFile. Subtracting this from the
+ * rollout's cumulative total makes each notify emit only the new delta, so
+ * re-reading the same rollout never counts tokens twice. Fail-open: 0.
+ */
+function sumRecordedTokens(activityFile, threadId) {
+  let sum = 0;
+  try {
+    if (!threadId || !fs.existsSync(activityFile)) return 0;
+    for (const line of fs.readFileSync(activityFile, "utf8").split("\n")) {
+      if (!line.includes(threadId) || !line.includes("SubagentStop")) continue;
+      try {
+        const rec = JSON.parse(line);
+        if (rec && rec.provider === "codex" && rec.sessionId === threadId && rec.event === "SubagentStop" && typeof rec.tokens === "number") sum += rec.tokens;
+      } catch {
+        /* skip */
+      }
+    }
+  } catch {
+    return 0;
+  }
+  return sum;
+}
+
+/** Builds a native subagent's SubagentStop record, adding the not-yet-counted rollout tokens when readable. */
+function buildSubagentStop(workerId, threadId, at, activityFile, env) {
+  const rec = { event: "SubagentStop", provider: "codex", workerId, sessionId: threadId, at };
+  try {
+    const totals = codexRollout.resolveThreadTokenTotals(threadId, undefined, env);
+    if (totals) {
+      const delta = totals.input_tokens + totals.output_tokens - sumRecordedTokens(activityFile, threadId);
+      if (delta > 0) {
+        rec.tokens = delta;
+        rec.usageReported = true;
+      }
+    }
+  } catch {
+    /* fail-open: no tokens, as before */
+  }
+  return rec;
+}
+
+/**
  * Maps a notify-entry-point payload (type:"agent-turn-complete", per
  * docs/codex-harness-findings.md's captured fixture) into HookRecord[]. A
  * notify payload carries no tool/session-boundary detail on its own, so
@@ -492,7 +535,7 @@ function mapNotifyPayload(payload, activityFile, at, env = process.env) {
     // missed.
     if (hasSeenTaskSpawn(activityFile, threadId)) {
       records.push({ event: "PreToolUse", provider: "codex", tool: "notify", workerId, sessionId: threadId, at });
-      records.push({ event: "SubagentStop", provider: "codex", workerId, sessionId: threadId, at: at + 1 });
+      records.push(buildSubagentStop(workerId, threadId, at + 1, activityFile, env));
       return records;
     }
 
@@ -507,7 +550,7 @@ function mapNotifyPayload(payload, activityFile, at, env = process.env) {
     };
     if (parentId) spawnRecord.parentId = parentId;
     records.push(spawnRecord);
-    records.push({ event: "SubagentStop", provider: "codex", workerId, sessionId: threadId, at: at + 1 });
+    records.push(buildSubagentStop(workerId, threadId, at + 1, activityFile, env));
     return records;
   }
 

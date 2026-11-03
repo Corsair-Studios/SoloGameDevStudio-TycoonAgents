@@ -606,6 +606,25 @@ export const MSG_SCHEMAS = {
             )
             .max(10)
             .optional(),
+          // Working agents on another provider (default role). Names only; baseUrl VALUE stored per user.
+          workers: z
+            .array(
+              z
+                .object({
+                  provider: z.enum(["codex", "gemini", "grok", "kimi", "mistral", "other"]),
+                  name: z.string().max(80),
+                  label: z.string().max(200).optional(),
+                  role: z.string().max(500).optional(),
+                  keywords: z.string().max(500).optional(),
+                  model: z.string().max(200).optional(),
+                  endpointEnv: z.string().max(100).optional(),
+                  apiKeyEnv: z.string().max(100).optional(),
+                  baseUrl: z.string().max(500).optional(),
+                })
+                .strict(),
+            )
+            .max(10)
+            .optional(),
         })
         .strict()
         .optional(),

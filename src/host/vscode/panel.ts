@@ -79,11 +79,14 @@ import {
 } from "../../core/providerSelection";
 import { getValue as getLocalEnvValue } from "../../core/localEnvStore";
 import { loadRoutingProfile } from "../../core/routingProfile";
+import { installProviderWorkers } from "../../core/providerWorkingAgent";
+import type { WorkingAgentSpec } from "../../core/providerWorkingAgent";
 import { BRIDGE_PACK_ID, bridgeServersForRoutingProfile, profileUsesCodexWrite, CODEX_WRITE_SERVER, buildBridgePicker, describeBridgeSetup, describeVendorBridgeSetups, isRegistrableBridgeServer, installBridgeSelection, installMcpEntry, serverForInstalledAgent, harnessUsesMcpJson, mcpServerState } from "../../core/bridgeSetup";
 import type { BridgeSetupInfo, McpInstallOutcome, OtherAgentSpec } from "../../core/bridgeSetup";
 import { mcpEntryMatchesOurs, tycoonServerDefsFromMedia, localMcpSyncDefsFromMedia, computeMcpApprovalState, approveTycoonMcpServers, removeTycoonMcpApprovals, revokeTycoonMcpApproval, repairTycoonHookCopies, approvalSliceFromState } from "../../core/mcpApproval";
 import type { ApprovalEnv } from "../../core/mcpApproval";
 import { runApprovalGuardSoon } from "./mcpApprovalGuardHost";
+import { readCodexConfigMcpServerNames } from "../../core/codexConfigServers";
 import { localizeMcpConfig, withLocalMcpServers } from "../../core/claudeLocalMcp";
 import type { LocalMcpOps } from "../../core/claudeLocalMcp";
 import {
@@ -682,6 +685,9 @@ export function readExplicitProviderSetting(
 // Theater sidebar) can share it without importing this module. Re-exported
 // here because existing callers/tests import it from panel.ts.
 export { THEME_SEED_WAIT_MS, waitForBundledThemes } from "./themeReady";
+
+/** Agents-screen provider picker payload: ticked reviewers, "Other" reviewers and new working agents. */
+type BridgeSelection = { agents?: string[]; others?: OtherAgentSpec[]; workers?: WorkingAgentSpec[] };
 
 export class TycoonPanel {
   public static currentPanel: TycoonPanel | undefined;
@@ -4746,18 +4752,62 @@ export class TycoonPanel {
   }
 
   /** Agents screen "Add an agent from another provider" install: selected agents + the servers they need (shared openai-compatible server once). */
-  private async _installBridgePicker(pack: any, root: string, selection?: { agents?: string[]; others?: OtherAgentSpec[] }): Promise<void> {
+  private async _installBridgePicker(pack: any, root: string, selection?: BridgeSelection): Promise<void> {
     await withHookWriteAsync(() => (TycoonPanel.prototype as unknown as Record<string, (...a: unknown[]) => Promise<void>>)._installBridgePickerUngated.call(this, pack, root, selection));
   }
 
-  private async _installBridgePickerUngated(pack: any, root: string, selection?: { agents?: string[]; others?: OtherAgentSpec[] }): Promise<void> {
+  private async _installBridgePickerUngated(pack: any, root: string, selection?: BridgeSelection): Promise<void> {
     try {
-      if (!selection || ((selection.agents?.length ?? 0) === 0 && (selection.others?.length ?? 0) === 0)) {
+      if (!selection || ((selection.agents?.length ?? 0) === 0 && (selection.others?.length ?? 0) === 0 && (selection.workers?.length ?? 0) === 0)) {
         this._panel.webview.postMessage({ type: MSG.PACK_INSTALLED, id: pack.id, ok: false, error: "Choose at least one model to install." });
         return;
       }
       const packAgents: PackAgent[] = Array.isArray(pack.agents) ? pack.agents : [];
       const ctx = this._bridgeSetupContext(root);
+      // Working agents (the default role) go first: an id that already exists refuses the whole add, inline.
+      const workerSpecs = selection.workers ?? [];
+      if (workerSpecs.length > 0) {
+        const wres = installProviderWorkers({
+          root,
+          specs: workerSpecs,
+          packAgents,
+          harness: ctx.harness,
+          scriptsDir: this._extensionUri.fsPath,
+          storeLocalValue: (name, value) => { setLocalEnvValue(name, value, process.env); },
+          getLocalValue: (name) => getLocalEnvValue(name),
+        });
+        if (!wres.ok) {
+          this._panel.webview.postMessage({ type: MSG.PACK_INSTALLED, id: pack.id, ok: false, error: wres.errors.join(" ") });
+          return;
+        }
+        let wcfg = this._readKeywordsConfig(root);
+        for (const a of wres.created) {
+          wcfg = setKeywordPattern(wcfg, a.id, a.keywords);
+          this._runtime.ingest({ type: "WorkerRegistered", at: Date.now(), workerId: a.id, name: a.name, model: a.model, description: a.role });
+        }
+        const wKeywordsPath = path.join(root, ".claude", "tycoon", "agent-keywords.json");
+        fs.mkdirSync(path.dirname(wKeywordsPath), { recursive: true });
+        fs.writeFileSync(wKeywordsPath, JSON.stringify(wcfg, null, 2));
+        this._rosterModelCache = undefined;
+        for (const n of wres.relayNotices) void vscode.window.showWarningMessage(`TycoonAgents: ${n}`);
+        // Save is the user's consent to the provider: register its bridge server (Claude local scope) like a routing Save.
+        if (harnessUsesMcpJson(ctx.harness)) {
+          const serverSetup = await this._registerBridgeServersForProfile(root, wres.profile, wres.previous);
+          if (serverSetup) void this._panel.webview.postMessage({ type: MSG.ROUTING_SERVER_SETUP, ...serverSetup });
+        }
+        if ((selection.agents?.length ?? 0) === 0 && (selection.others?.length ?? 0) === 0) {
+          this._panel.webview.postMessage({
+            type: MSG.PACK_INSTALLED,
+            id: pack.id,
+            ok: true,
+            results: { agents: wres.created.map((a) => ({ id: a.id, status: "created" })), mcp: {}, dispatcherHost: !harnessUsesMcpJson(ctx.harness), ...(wres.relayNotices.length > 0 ? { notices: wres.relayNotices } : {}) },
+          });
+          this._handleGetSettings();
+          this._handleGetProviderAgents();
+          this._handleGetRouting();
+          return;
+        }
+      }
       const res = await installBridgeSelection({
         root,
         packAgents,
@@ -4978,7 +5028,7 @@ export class TycoonPanel {
     id: string,
     thirdParty = false,
     passedDisclosures?: any[],
-    selection?: { agents?: string[]; others?: OtherAgentSpec[] }
+    selection?: BridgeSelection
   ): Promise<void> {
     try {
       const packsPath = path.join(this._extensionUri.fsPath, "media", "packs", "catalog.json");
@@ -10713,6 +10763,7 @@ export class TycoonPanel {
           chips: engineChips,
           uefn: { detected: uefn.detected, signals: uefn.signals, uefnInstalled: uefn.uefnInstalled, bridgeSetUp },
           mcpServerIds,
+          codexMcpServerNames: (() => { try { return readCodexConfigMcpServerNames(); } catch { return []; } })(),
         },
       };
 

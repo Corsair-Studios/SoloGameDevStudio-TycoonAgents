@@ -485,6 +485,12 @@ function bridgeSetupModule() {
   if (!_bridgeSetupModule) _bridgeSetupModule = requireCompiledOrThrow(BRIDGE_SETUP_JS, 'bridgeSetup');
   return _bridgeSetupModule;
 }
+const PROVIDER_WORKING_AGENT_JS = path.join(REPO_ROOT, 'out', 'src', 'core', 'providerWorkingAgent.js');
+let _providerWorkingAgentModule;
+function providerWorkingAgentModule() {
+  if (!_providerWorkingAgentModule) _providerWorkingAgentModule = requireCompiledOrThrow(PROVIDER_WORKING_AGENT_JS, 'providerWorkingAgent');
+  return _providerWorkingAgentModule;
+}
 const CLAUDE_LOCAL_MCP_JS = path.join(REPO_ROOT, 'out', 'src', 'core', 'claudeLocalMcp.js');
 const CLAUDE_LOCAL_MCP_SYNC_JS = path.join(REPO_ROOT, 'out', 'src', 'core', 'claudeLocalMcpSync.js');
 let _claudeLocalMcpModule;
@@ -2778,7 +2784,20 @@ async function installBridgePickerStandalone(pack, root, selection) {
     const sel = selection && typeof selection === 'object' ? selection : {};
     const agentsSel = Array.isArray(sel.agents) ? sel.agents.filter((x) => typeof x === 'string').slice(0, 20) : [];
     const othersSel = Array.isArray(sel.others) ? sel.others.slice(0, 10) : [];
-    if (agentsSel.length === 0 && othersSel.length === 0) {
+    // Same bounds as the INSTALL_PACK zod schema (src/host/vscode/messages.ts): oversize or non-string fields are refused.
+    const WORKER_LIMITS = { provider: 20, name: 80, label: 200, role: 500, keywords: 500, model: 200, endpointEnv: 100, apiKeyEnv: 100, baseUrl: 500 };
+    const workersRaw = Array.isArray(sel.workers) ? sel.workers.slice(0, 10) : [];
+    const workersSel = [];
+    for (const w of workersRaw) {
+      const okShape = w && typeof w === 'object' && typeof w.name === 'string' && typeof w.provider === 'string' &&
+        Object.keys(w).every((k) => Object.prototype.hasOwnProperty.call(WORKER_LIMITS, k) && typeof w[k] === 'string' && w[k].length <= WORKER_LIMITS[k]);
+      if (!okShape) {
+        broadcast('message', { type: 'packInstalled', id, ok: false, error: 'An agent entry was invalid or too long, so nothing was added.' });
+        return;
+      }
+      workersSel.push(w);
+    }
+    if (agentsSel.length === 0 && othersSel.length === 0 && workersSel.length === 0) {
       broadcast('message', { type: 'packInstalled', id, ok: false, error: 'Choose at least one model to install.' });
       return;
     }
@@ -2786,6 +2805,49 @@ async function installBridgePickerStandalone(pack, root, selection) {
     const { setKeywordPattern } = agentConfigModule();
     const { setLocalEnvValue } = routingHostOpsModule();
     const harness = resolveEffectiveHarness(root);
+    // Working agents (the default role) go first: an id that already exists refuses the whole add, inline.
+    if (workersSel.length > 0) {
+      const wres = providerWorkingAgentModule().installProviderWorkers({
+        root,
+        specs: workersSel,
+        packAgents: Array.isArray(pack.agents) ? pack.agents : [],
+        harness,
+        scriptsDir: REPO_ROOT,
+        storeLocalValue: (name, value) => {
+          setLocalEnvValue(name, value, process.env);
+        },
+        getLocalValue: (name) => localEnvStoreGet(name),
+      });
+      if (!wres.ok) {
+        broadcast('message', { type: 'packInstalled', id, ok: false, error: wres.errors.join(' ') });
+        return;
+      }
+      let wcfg = readKeywordsConfigStandalone(root);
+      for (const a of wres.created) wcfg = setKeywordPattern(wcfg, a.id, a.keywords);
+      const wKeywordsPath = path.join(root, '.claude', 'tycoon', 'agent-keywords.json');
+      fs.mkdirSync(path.dirname(wKeywordsPath), { recursive: true });
+      fs.writeFileSync(wKeywordsPath, JSON.stringify(wcfg, null, 2));
+      for (const n of wres.relayNotices) console.warn(`[tycoonagents-standalone] ${n}`);
+      const workerNotices = wres.relayNotices;
+      // Save is the user's consent to the provider: register its bridge server (Claude local scope) like a routing Save.
+      if (bridgeSetupModule().harnessUsesMcpJson(harness)) {
+        const serverSetup = await registerBridgeServersForProfileStandalone(root, wres.profile, wres.previous);
+        if (serverSetup) broadcast('message', { type: 'routingServerSetup', ...serverSetup });
+      }
+      if (agentsSel.length === 0 && othersSel.length === 0) {
+        broadcast('message', {
+          type: 'packInstalled',
+          id,
+          ok: true,
+          results: { agents: wres.created.map((a) => ({ id: a.id, status: 'created' })), mcp: {}, dispatcherHost: !bridgeSetupModule().harnessUsesMcpJson(harness), ...(workerNotices.length > 0 ? { notices: workerNotices } : {}) },
+        });
+        broadcast('message', { type: 'settings', payload: buildStandaloneSettingsPayload() });
+        broadcast('message', buildProviderAgentsPayload());
+        broadcast('message', { type: 'routing', payload: buildRoutingPayload(root) });
+        healKeywordsThenDoctrineStandalone(root);
+        return;
+      }
+    }
     const res = await installBridgeSelection({
       root,
       packAgents: Array.isArray(pack.agents) ? pack.agents : [],

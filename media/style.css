@@ -8782,6 +8782,25 @@ button.theme-review-preview:focus-visible::after {
   padding: 4px 6px;
 }
 
+.bridge-role-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0 0 8px;
+}
+
+.bridge-role-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bridge-worker-select {
+  max-width: 100%;
+}
+
 .bridge-picker-actions {
   display: flex;
   align-items: center;

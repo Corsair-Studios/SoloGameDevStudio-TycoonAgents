@@ -841,6 +841,112 @@ function codexSandboxFailure(stderr, platform) {
 }
 const CODEX_SANDBOX_UNAVAILABLE_MESSAGE = "Codex's Windows sandbox couldn't start on this machine, so the worker couldn't run commands. Repair it in Codex, or set windows.sandbox = \"unelevated\" in your Codex config (config.toml).";
 
+// --- Codex MCP approval for installed-server specialists ---
+// `codex exec -c approval_policy=never` auto-rejects any MCP tool that needs approval, so a builder
+// linked to an MCP server the user installed (e.g. roblox -> Roblox Studio) could not use it.
+// Installing the server is consent: for a non-read-only specialist we mark ONLY its own, already
+// defined server as default_tools_approval_mode="approve". The sandbox flag is never touched.
+const MCP_NAME_SKIP = new Set(["tycoon"]);
+function normalizeMcpName(name) {
+  return String(name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+let packMcpLinksWarned = false;
+/** Pack agent id -> MCP ids: the generated pack-mcp-links.json beside this file (shipped to the stable bridge dir), else the repo catalog (dev). Warns once if neither reads. */
+function packMcpLinks() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, "pack-mcp-links.json"), "utf8").replace(/^\uFEFF/, ""));
+  } catch { /* fall back to the repo catalog */ }
+  try {
+    const catalog = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "media", "packs", "catalog.json"), "utf8").replace(/^\uFEFF/, ""));
+    const packs = Array.isArray(catalog) ? catalog : catalog && Array.isArray(catalog.packs) ? catalog.packs : [];
+    const out = {};
+    for (const pack of packs) {
+      if (!pack || typeof pack.mcp !== "string") continue;
+      for (const key of [pack.id, pack.agent && pack.agent.id]) if (typeof key === "string" && key) (out[key] = out[key] || []).push(pack.mcp);
+    }
+    return out;
+  } catch {
+    if (!packMcpLinksWarned) {
+      packMcpLinksWarned = true;
+      process.stderr.write("tycoon-dispatcher: pack-mcp-links.json is missing, so pack agents' MCP servers cannot be pre-approved for Codex.\n");
+    }
+    return null;
+  }
+}
+/** MCP ids linked to an agent: agent-file `tools: mcp__<server>__*` / `mcp:` line, else the pack catalog's link. Names only. */
+function linkedMcpIds(agentInfo) {
+  const ids = [];
+  const workerId = agentInfo && (agentInfo.workerId || agentInfo.agentId);
+  if (typeof workerId !== "string" || !/^[\w.-]+$/.test(workerId)) return ids;
+  const projectDir = agentInfo && agentInfo.projectDir;
+  if (typeof projectDir === "string" && projectDir) {
+    try {
+      const raw = fs.readFileSync(path.join(projectDir, ".claude", "agents", `${workerId}.md`), "utf8").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+      const fm = raw.match(/^---\s*\n([\s\S]*?)\n---/);
+      if (fm) {
+        for (const line of fm[1].split("\n")) {
+          const t = line.match(/^tools:\s*(.*)$/);
+          if (t) for (const m of t[1].matchAll(/mcp__(.+?)__/g)) ids.push(m[1]);
+          const l = line.match(/^mcp:\s*["']?([^"'\s#]+)/);
+          if (l && l[1] !== "null") ids.push(l[1]);
+        }
+      }
+    } catch { /* no agent file: fall through to the pack catalog */ }
+  }
+  if (ids.length === 0) {
+    const links = packMcpLinks();
+    if (links && Array.isArray(links[workerId])) for (const id of links[workerId]) if (typeof id === "string") ids.push(id);
+  }
+  return ids;
+}
+/** Server names from `codex mcp list --json` output (names only; env/args are never read). */
+function parseCodexMcpListNames(stdout) {
+  const json = JSON.parse(String(stdout || "").trim());
+  const rows = Array.isArray(json) ? json : json && Array.isArray(json.servers) ? json.servers : json && typeof json === "object" ? Object.keys(json).map((k) => ({ name: k })) : [];
+  return rows.map((r) => (typeof r === "string" ? r : r && r.name)).filter((n) => typeof n === "string" && n);
+}
+let codexMcpNamesCache = new Map();
+/** Defined Codex MCP server names for this binary, cached per process; null (after one warning) when listing fails. */
+function listCodexMcpNames(bin, cwd, env, shell, runner) {
+  const key = String(bin);
+  if (!codexMcpNamesCache.has(key)) {
+    codexMcpNamesCache.set(key, (async () => {
+      try {
+        const run = await (runner || runClaudeCli)(bin, ["mcp", "list", "--json"], cwd, 20000, "", env, { shell, label: "codex mcp list" });
+        if (run.error || run.code !== 0) throw new Error(run.error || `exit ${run.code}`);
+        return parseCodexMcpListNames(run.stdout);
+      } catch (err) {
+        process.stderr.write(`tycoon-dispatcher: could not list Codex MCP servers (${err && err.message ? err.message : "unknown"}); running without MCP approval.\n`);
+        return null;
+      }
+    })());
+  }
+  return codexMcpNamesCache.get(key);
+}
+function resetCodexMcpNamesCache() { codexMcpNamesCache = new Map(); }
+/** `-c` args that pre-approve the agent's own listed MCP servers. [] for read-only agents, unlinked or unlisted servers. */
+async function codexMcpApprovalArgs(agentInfo, bin, cwd, env, shell, runner) {
+  if (isReadOnlyAgent(agentInfo)) return [];
+  const wanted = new Set(linkedMcpIds(agentInfo).map(normalizeMcpName).filter((n) => n && !MCP_NAME_SKIP.has(n)));
+  if (wanted.size === 0) return [];
+  const names = await listCodexMcpNames(bin, cwd, env, shell, runner);
+  if (!names) return [];
+  const out = [];
+  const seen = new Set();
+  for (const name of names) {
+    const norm = normalizeMcpName(name);
+    if (!wanted.has(norm) || MCP_NAME_SKIP.has(norm) || seen.has(name)) continue;
+    let tomlKey;
+    if (/^[A-Za-z0-9_-]+$/.test(name)) tomlKey = name;
+    else if (/^[\w.-]+$/.test(name)) tomlKey = `"${name}"`;
+    else continue;
+    seen.add(name);
+    const arg = `mcp_servers.${tomlKey}.default_tools_approval_mode="approve"`;
+    out.push("-c", shell ? arg.replace(/"/g, '\\"') : arg);
+  }
+  return out;
+}
+
 /** Runs `codex exec` for an openai slot on the Codex harness; elsewhere an openai specialist is Codex-native. */
 async function openaiAdapter(task, agentInfo) {
   if (!agentInfo || agentInfo.harness !== "codex") return { error: "use Codex native agents" };
@@ -869,10 +975,14 @@ async function openaiAdapter(task, agentInfo) {
     } catch { /* keep the scratch dir: edits cannot reach the project */ }
   }
   // mcp_servers.tycoon.enabled=false: the child must not see the machine-wide tycoon MCP server and delegate again.
-  const args = ["exec", "--skip-git-repo-check", "-s", readOnly ? "read-only" : "workspace-write", "-c", "approval_policy=never", "-c", "mcp_servers.tycoon.enabled=false"];
+  const args = ["exec", "--json", "--skip-git-repo-check", "-s", readOnly ? "read-only" : "workspace-write", "-c", "approval_policy=never", "-c", "mcp_servers.tycoon.enabled=false"];
   if (model) args.push("-m", model);
   const effort = agentInfo && typeof agentInfo.effort === "string" ? agentInfo.effort.trim().toLowerCase() : "";
   if (CODEX_EFFORTS.includes(effort)) args.push("-c", `model_reasoning_effort=${effort}`);
+  if (!readOnly) {
+    const useShell = launcher.needsShell(bin);
+    args.push(...(await codexMcpApprovalArgs(agentInfo, bin, cwd, { ...process.env }, useShell)));
+  }
   args.push("-");
 
   const prompt = readOnly ? task : `${LEAF_PREAMBLE}
@@ -892,7 +1002,38 @@ ${task}`;
     const tail = redactSecrets(run.stderr || "").slice(-500);
     return { error: `codex exec exited ${run.code} (argv: ${redactSecrets([bin, ...args].join(" "))}).${tail ? ` stderr: ${tail}` : ""}` };
   }
-  return { text: String(run.stdout || "").trim() };
+  const parsed = parseCodexExecJson(run.stdout);
+  return { text: parsed.text, usage: parsed.usage };
+}
+
+/**
+ * Parses `codex exec --json` stdout (JSONL). The answer is the last
+ * item.completed agent_message; usage is the sum of every turn.completed
+ * usage (input_tokens/output_tokens). When no JSONL event is recognised the
+ * raw stdout is the text and usage is undefined (fail-open).
+ */
+function parseCodexExecJson(stdout) {
+  const raw = String(stdout || "");
+  let text;
+  let input = 0;
+  let output = 0;
+  let sawUsage = false;
+  for (const line of raw.split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("{")) continue;
+    try {
+      const ev = JSON.parse(t);
+      if (ev.type === "item.completed" && ev.item && ev.item.type === "agent_message" && typeof ev.item.text === "string") text = ev.item.text;
+      else if (ev.type === "turn.completed" && ev.usage) {
+        if (typeof ev.usage.input_tokens === "number") { input += ev.usage.input_tokens; sawUsage = true; }
+        if (typeof ev.usage.output_tokens === "number") { output += ev.usage.output_tokens; sawUsage = true; }
+      }
+    } catch { /* not JSON: ignore */ }
+  }
+  return {
+    text: (text !== undefined ? text : raw).trim(),
+    usage: sawUsage ? { input_tokens: input, output_tokens: output } : undefined,
+  };
 }
 
 async function unsupportedAdapter(_task, agentInfo) {
@@ -934,6 +1075,10 @@ function resolveAdapter(vendor, opts) {
 }
 
 module.exports = {
+  codexMcpApprovalArgs,
+  linkedMcpIds,
+  normalizeMcpName,
+  resetCodexMcpNamesCache,
   codexSandboxFailure,
   claudeSubscriptionBlock,
   adapterKeyForVendor,

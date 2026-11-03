@@ -1,0 +1,20 @@
+{
+  "blender": [
+    "blender"
+  ],
+  "playwright": [
+    "playwright"
+  ],
+  "roblox": [
+    "roblox-studio"
+  ],
+  "uefn": [
+    "uefn-bridge"
+  ],
+  "unity": [
+    "unity-ai-assistant"
+  ],
+  "web-qa": [
+    "playwright"
+  ]
+}

@@ -546,6 +546,53 @@ function findRecentDelegateThread(env = process.env, now = Date.now(), candidate
   }
 }
 
+const TOKEN_TAIL_BYTES = 1024 * 1024;
+
+/**
+ * Cumulative token usage of one Codex thread, read from its rollout. Codex
+ * writes event_msg/token_count items whose info.total_token_usage is the
+ * thread's running total (info.last_token_usage is the latest turn only), so
+ * the LAST such event in the file is the thread total and reading it twice
+ * yields the same number. Scans only the last 1MB. Returns
+ * { input_tokens, output_tokens } or null when no usable event is found.
+ * Fail-open: never throws.
+ */
+function readRolloutTokenTotals(filePath) {
+  try {
+    if (!filePath) return null;
+    const lines = readTail(filePath, TOKEN_TAIL_BYTES).split("\n");
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      if (!line.includes("token_count")) continue;
+      try {
+        const item = JSON.parse(line);
+        const p = item && item.payload;
+        if (!p || p.type !== "token_count") continue;
+        const t = p.info && p.info.total_token_usage;
+        if (!t || typeof t !== "object") continue;
+        const input = typeof t.input_tokens === "number" ? t.input_tokens : 0;
+        const output = typeof t.output_tokens === "number" ? t.output_tokens : 0;
+        if (input + output <= 0) continue;
+        return { input_tokens: input, output_tokens: output };
+      } catch {
+        /* skip bad line */
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Token totals for a thread id (rollout located like resolveSessionMeta). Null when unavailable. */
+function resolveThreadTokenTotals(threadId, codexHome, env = process.env) {
+  try {
+    return readRolloutTokenTotals(findRolloutFile(threadId, codexHome, env));
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
   normalizePathForCompare,
   listCandidateRollouts,
@@ -561,4 +608,6 @@ module.exports = {
   workerIdFromAgentPath,
   resolveWorkerId,
   findNewestUserThreadForCwd,
+  readRolloutTokenTotals,
+  resolveThreadTokenTotals,
 };
