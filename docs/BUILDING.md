@@ -10,7 +10,7 @@ Instructions for building TycoonAgents from source, used when developing the ext
 
   This compiles the TypeScript sources and copies the hook runtime files.
 
-2. **Run a session** in Claude Code (or Codex (Experimental)) as usual — the hooks append records to the activity log the panel reads. On a headless or remote machine, set `TYCOON_STANDALONE_NO_OPEN=1` so the standalone does not try to launch a browser.
+2. **Run a session** in Claude Code (or Codex) as usual — the hooks append records to the activity log the panel reads. On a headless or remote machine, set `TYCOON_STANDALONE_NO_OPEN=1` so the standalone does not try to launch a browser.
 
 OpenCode support is coming soon; it is not selectable yet.
 

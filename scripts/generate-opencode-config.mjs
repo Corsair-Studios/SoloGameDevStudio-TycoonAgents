@@ -431,6 +431,25 @@ of whether you (the orchestrator model) recall the delegation rules above.
    will fail the same way every time.
 `;
 
+/** The saved Review-pass choice in execution.json; off unless explicitly true. */
+function readReviewEnabled(root) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(root, ".claude", "tycoon", "execution.json"), "utf8"));
+    return parsed !== null && typeof parsed === "object" && parsed.reviewEnabled === true;
+  } catch {
+    return false;
+  }
+}
+
+/** The enforcement doctrine; the single-pass review gate rule is dropped while the Review pass is off. */
+function opencodeEnforcementDoctrine(reviewEnabled) {
+  if (reviewEnabled) return OPENCODE_ENFORCEMENT_DOCTRINE;
+  return OPENCODE_ENFORCEMENT_DOCTRINE
+    .replace(/3\. \*\*Single-pass review gate\.\*\*[\s\S]*?do not loop further reviews\.\r?\n/, "")
+    .replace("4. **Leaf workers never spawn.**", "3. **Leaf workers never spawn.**")
+    .replace("enforces four rules", "enforces three rules");
+}
+
 // Headings whose ENTIRE section (heading line through, but not including,
 // the next top-level "## " heading) carries no delegation doctrine at all —
 // confirmed by name against the HARD CONSTRAINT list (MANDATORY delegation
@@ -582,7 +601,7 @@ function buildAgentsMd(root, agentDefaultLabels) {
   if (managedContent !== "" && !managedContent.endsWith("\n")) {
     managedContent += "\n";
   }
-  managedContent += OPENCODE_ENFORCEMENT_DOCTRINE;
+  managedContent += opencodeEnforcementDoctrine(readReviewEnabled(root));
 
   const startMarker = "<!-- TYCOON-MANAGED:START -->";
   const endMarker = "<!-- TYCOON-MANAGED:END -->";

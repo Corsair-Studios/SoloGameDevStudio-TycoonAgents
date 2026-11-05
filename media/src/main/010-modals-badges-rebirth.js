@@ -1045,7 +1045,7 @@
     const fromCodex = msg.from === "codex";
     const names = fromCodex
       ? { from: "Codex", selected: "Claude Code", target: "claude-code", label: "Switch to Claude Code" }
-      : { from: "Claude Code", selected: "Codex", target: "codex", label: "Switch to Codex (Experimental)" };
+      : { from: "Claude Code", selected: "Codex", target: "codex", label: "Switch to Codex" };
     const notice = document.createElement("div");
     notice.id = "harness-mismatch-notice";
     notice.className = "catalog-notice legacy-artifacts-notice harness-mismatch-notice";
@@ -1053,7 +1053,7 @@
     const text = document.createElement("span");
     text.className = "legacy-artifacts-notice-text";
     text.textContent = "You sent a prompt from " + names.from + ", but this project's harness is set to " +
-      names.selected + (names.selected === "Codex" ? " (Experimental)" : "") + ", so it won't show on the stage.";
+      names.selected + ", so it won't show on the stage.";
     notice.appendChild(text);
     const addBtn = (label, onClick) => {
       const b = document.createElement("button");
@@ -1759,15 +1759,15 @@
     );
     const delegation_mode = teamLeadsRadio && teamLeadsRadio.checked ? "team_leads" : "flat";
     vscode.postMessage({ type: "installHooks", delegation_mode });
-    // installHooks always turns the Review pass on by default (see
-    // panel.ts's _handleInstallHooks). If the pre-install checkbox was
-    // unchecked, follow up with a setReviewEnabled(false) — messages are
-    // processed in order, so this lands right after install completes.
+    // The Review pass is off by default (see panel.ts's _handleInstallHooks).
+    // If the pre-install checkbox was checked, follow up with a
+    // setReviewEnabled(true) — messages are processed in order, so this
+    // lands right after install completes.
     const reviewPassCheckbox = /** @type {HTMLInputElement|null} */ (
       document.getElementById("review-pass-checkbox")
     );
-    if (reviewPassCheckbox && !reviewPassCheckbox.checked) {
-      vscode.postMessage({ type: "setReviewEnabled", enabled: false });
+    if (reviewPassCheckbox && reviewPassCheckbox.checked) {
+      vscode.postMessage({ type: "setReviewEnabled", enabled: true  });
     }
   });
 
@@ -1905,11 +1905,11 @@
       ? lastSettings.harness.options
       : [
           { id: "claude-code", label: "Claude Code" },
-          { id: "codex", label: "Codex (Experimental)" },
+          { id: "codex", label: "Codex" },
           { id: "opencode", label: "OpenCode (Coming Soon)", disabled: true },
         ];
     var match = harnessOptions.find(function (opt) { return opt.id === harnessEffective; });
-    var harnessLabel = match ? match.label : (harnessEffective === "opencode" ? "OpenCode (Experimental)" : (harnessEffective === "codex" ? "Codex (Experimental)" : "Claude Code"));
+    var harnessLabel = match ? match.label : (harnessEffective === "opencode" ? "OpenCode (Experimental)" : (harnessEffective === "codex" ? "Codex" : "Claude Code"));
     var line = document.createElement("p");
     line.className = "routing-agents-harness-line";
     line.textContent = "Runs on " + harnessLabel + " · ";

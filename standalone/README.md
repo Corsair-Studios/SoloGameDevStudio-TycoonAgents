@@ -328,7 +328,7 @@ independent of, and not run by, the root repo's `npm test`.
 ## Feature parity
 
 Every feature is identical after setup except the rows marked "not yet";
-the standalone Codex (Experimental) host differs from the Claude Code
+the standalone Codex host differs from the Claude Code
 host only in provider/vendor/model labels.
 
 | Feature | VS Code (Claude Code) | Standalone (Claude Code) |

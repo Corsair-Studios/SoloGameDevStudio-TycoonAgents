@@ -684,7 +684,7 @@ untouched.
 
 ### Agents screen visibility
 
-The harness dropdown (Claude Code default, Codex (Experimental); OpenCode is listed as "OpenCode (Coming Soon)" and cannot be selected) lives only in
+The harness dropdown (Claude Code default, Codex; OpenCode is listed as "OpenCode (Coming Soon)" and cannot be selected) lives only in
 **Settings**; the Agents screen (menu entry "Agents", always visible) does not
 have it and instead shows a read-only line — "Runs on Claude Code ·
 Change in Settings". The

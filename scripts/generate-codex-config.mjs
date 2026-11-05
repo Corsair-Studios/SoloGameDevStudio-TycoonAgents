@@ -265,13 +265,33 @@ function buildAgentsToml(specialists) {
   return lines.join("\n").replace(/\n+$/, "\n");
 }
 
+/** The saved Review-pass choice in execution.json; off unless explicitly true. */
+function readReviewEnabled(projectDir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(projectDir, ".claude", "tycoon", "execution.json"), "utf8"));
+    return parsed !== null && typeof parsed === "object" && parsed.reviewEnabled === true;
+  } catch {
+    return false;
+  }
+}
+
 /** Build the AGENTS.md Codex-managed block body (without the surrounding markers). */
-function buildAgentsMdCodexBlock(specialists) {
+function buildAgentsMdCodexBlock(specialists, reviewEnabled = false) {
   const ids = specialists.map((s) => s.id);
   const reviewerId = ids.includes("reviewer") ? "reviewer" : ids.includes("codex-reviewer") ? "codex-reviewer" : null;
   const reviewerPhrase = reviewerId
     ? `the reviewer specialist (${reviewerId})`
     : "the reviewer specialist, if the roster has one";
+  const reviewParagraph = `
+Route each completed change through one review pass by ${reviewerPhrase}
+to check it against the task's intent. If it requires changes, send them back to the original
+specialist once, then report the outcome; do not loop. The user is the final
+reviewer.
+`;
+  const noReviewParagraph = `
+Do not dispatch a review pass on your own; run one only when the user asks for
+a review. The user is the final reviewer.
+`;
   const rows = specialists
     .map((s) => {
       const keywordPart = s.pattern ? s.pattern : "(fallback only)";
@@ -380,12 +400,7 @@ that is a violation of its brief, not a valid step.
 A worker's "done" is not proof. Before reporting a task finished, re-read the
 changed files on disk; if nothing changed, treat the task as failed and
 re-dispatch it. A change is never verified by the agent that wrote it.
-
-Route each completed change through one review pass by ${reviewerPhrase}
-to check it against the task's intent. If it requires changes, send them back to the original
-specialist once, then report the outcome; do not loop. The user is the final
-reviewer.
-`;
+${reviewEnabled ? reviewParagraph : noReviewParagraph}`;
 }
 
 /** Rewrite `next` with CRLF line endings when `existing` uses CRLF; otherwise unchanged. */
@@ -474,7 +489,7 @@ export function upsertCodexBlock(existingAgentsMd, blockBody) {
  */
 export function generateCodexConfig({ projectDir, rosterDir, routingPath }) {
   const specialists = loadRoster({ projectDir, rosterDir, routingPath });
-  const agentsMdBlock = buildAgentsMdCodexBlock(specialists);
+  const agentsMdBlock = buildAgentsMdCodexBlock(specialists, readReviewEnabled(projectDir));
   const agentsToml = buildAgentsToml(specialists);
   return { agentsMdBlock, agentsToml, specialists };
 }

@@ -654,7 +654,7 @@ test('POST /message {type: "getSettings"} -> broadcasts a "settings" reply that 
     assert.equal(settings.payload.hook.installed, true);
     assert.ok(Array.isArray(settings.payload.agents));
     assert.equal(settings.payload.delegation_mode, 'flat');
-    assert.equal(settings.payload.reviewEnabled, true);
+    assert.equal(settings.payload.reviewEnabled, false);
     assert.deepEqual(settings.payload.foreignManagedBlocks, []);
   } finally {
     controller.abort();

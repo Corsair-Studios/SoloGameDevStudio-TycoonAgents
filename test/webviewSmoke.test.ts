@@ -1196,8 +1196,8 @@ test('media/main.js boots + drives without throwing in a jsdom runtime', async (
       assert.ok(h, 'hint shown');
       assert.equal(h.getAttribute('role'), 'status');
       assert.equal(h.parentElement.id, 'top-notice-stack');
-      assert.match(h.textContent, /You sent a prompt from Claude Code, but this project's harness is set to Codex \(Experimental\), so it won't show on the stage\./);
-      assert.deepEqual([...h.querySelectorAll('button')].map((x: any) => x.textContent), ['Switch to Codex (Experimental)', 'Dismiss', "Don't show again"]);
+      assert.match(h.textContent, /You sent a prompt from Claude Code, but this project's harness is set to Codex, so it won't show on the stage\./);
+      assert.deepEqual([...h.querySelectorAll('button')].map((x: any) => x.textContent), ['Switch to Codex', 'Dismiss', "Don't show again"]);
 
       dispatch({ type: 'harnessMismatch', active: false, from: null, selected: 'codex', promptAt: null });
       assert.equal(hint(), null, 'auto-clears');
@@ -1336,7 +1336,7 @@ test('media/main.js boots + drives without throwing in a jsdom runtime', async (
             needsDefaultRoute: true,
             options: [
               { id: 'claude-code', label: 'Claude Code' },
-              { id: 'codex', label: 'Codex (Experimental)' },
+              { id: 'codex', label: 'Codex' },
               { id: 'opencode', label: 'OpenCode (Coming Soon)', disabled: true },
             ],
             requiresRestart: false,
@@ -1483,7 +1483,7 @@ test('media/main.js boots + drives without throwing in a jsdom runtime', async (
             warning: warningText,
             options: [
               { id: 'claude-code', label: 'Claude Code' },
-              { id: 'codex', label: 'Codex (Experimental)' },
+              { id: 'codex', label: 'Codex' },
             ],
             requiresRestart: false,
           },
@@ -1509,7 +1509,7 @@ test('media/main.js boots + drives without throwing in a jsdom runtime', async (
             mismatch: false,
             options: [
               { id: 'claude-code', label: 'Claude Code' },
-              { id: 'codex', label: 'Codex (Experimental)' },
+              { id: 'codex', label: 'Codex' },
             ],
             requiresRestart: false,
           },
@@ -1552,7 +1552,7 @@ test('media/main.js boots + drives without throwing in a jsdom runtime', async (
             mismatch: false,
             options: [
               { id: 'claude-code', label: 'Claude Code' },
-              { id: 'codex', label: 'Codex (Experimental)' },
+              { id: 'codex', label: 'Codex' },
             ],
             requiresRestart: false,
           },
@@ -1577,7 +1577,7 @@ test('media/main.js boots + drives without throwing in a jsdom runtime', async (
             mismatch: false,
             options: [
               { id: 'claude-code', label: 'Claude Code' },
-              { id: 'codex', label: 'Codex (Experimental)' },
+              { id: 'codex', label: 'Codex' },
             ],
             requiresRestart: false,
             codexHooksInstalled: false,
@@ -1612,7 +1612,7 @@ test('media/main.js boots + drives without throwing in a jsdom runtime', async (
             mismatch: false,
             options: [
               { id: 'claude-code', label: 'Claude Code' },
-              { id: 'codex', label: 'Codex (Experimental)' },
+              { id: 'codex', label: 'Codex' },
             ],
             requiresRestart: false,
             codexHooksInstalled: true,
@@ -1649,7 +1649,7 @@ test('media/main.js boots + drives without throwing in a jsdom runtime', async (
             mismatch: false,
             options: [
               { id: 'claude-code', label: 'Claude Code' },
-              { id: 'codex', label: 'Codex (Experimental)' },
+              { id: 'codex', label: 'Codex' },
             ],
             requiresRestart: false,
             codexHooksInstalled: true,

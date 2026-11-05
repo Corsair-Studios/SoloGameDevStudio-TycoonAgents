@@ -3347,7 +3347,7 @@ function healKeywordsThenDoctrineStandalone(root) {
     const updated = buildClaudeMdDoctrineStandalone(
       existingClaudeMd,
       delegation_mode,
-      reviewEnabled ?? true,
+      reviewEnabled ?? false,
       root,
       sessionJournalEntries ?? 3,
     );
@@ -3463,7 +3463,7 @@ function buildStandaloneSettingsPayload() {
   }
 
   let delegation_mode = 'flat';
-  let reviewEnabled = true;
+  let reviewEnabled = false;
   let sessionJournalEntries = 3;
   let agents = [];
   if (primaryProjectRoot) {
@@ -3471,7 +3471,7 @@ function buildStandaloneSettingsPayload() {
       const { readExecutionConfig } = delegationDoctrineModule();
       const execCfg = readExecutionConfig(path.join(primaryProjectRoot, '.claude'));
       delegation_mode = execCfg.delegation_mode;
-      reviewEnabled = execCfg.reviewEnabled ?? true;
+      reviewEnabled = execCfg.reviewEnabled ?? false;
       sessionJournalEntries = execCfg.sessionJournalEntries ?? 3;
     } catch (err) {
       console.error('[tycoonagents-standalone] buildStandaloneSettingsPayload: readExecutionConfig failed:', err);
@@ -3712,7 +3712,7 @@ function handleSetDelegationModeStandalone(rawMode) {
     const claudeMdError = refreshDelegationSectionStandalone(
       root,
       mode,
-      execCfg.reviewEnabled ?? true,
+      execCfg.reviewEnabled ?? false,
       execCfg.sessionJournalEntries ?? 3,
     );
     broadcast('message', {
@@ -3767,6 +3767,17 @@ function handleSetReviewEnabledStandalone(enabled) {
       enabled,
       execCfg.sessionJournalEntries ?? 3,
     );
+    try {
+      const agentsMdText = fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8');
+      if (
+        agentsMdText.includes('<!-- TYCOON-CODEX-MANAGED:START -->') &&
+        agentsMdText.includes('<!-- TYCOON-CODEX-MANAGED:END -->')
+      ) {
+        runCodexConfigGeneratorStandalone(root);
+      }
+    } catch {
+      // No AGENTS.md -> nothing to refresh.
+    }
     broadcast('message', {
       type: 'settingsUpdated',
       ok: true,
@@ -3836,7 +3847,7 @@ function handleSetSessionJournalEntriesStandalone(entries) {
     const claudeMdError = refreshDelegationSectionStandalone(
       root,
       execCfg.delegation_mode,
-      execCfg.reviewEnabled ?? true,
+      execCfg.reviewEnabled ?? false,
       clamped,
     );
     broadcast('message', {
@@ -3923,7 +3934,7 @@ function handleSetProjectPlanEnabledStandalone(enabled) {
       const updated = buildClaudeMdDoctrineStandalone(
         existingClaudeMd,
         delegation_mode,
-        reviewEnabled ?? true,
+        reviewEnabled ?? false,
         root,
         sessionJournalEntries ?? 3,
       );
@@ -4716,9 +4727,9 @@ function buildHostHtml(token) {
           </span>
         </label>
         <label class="delegation-mode-option review-pass-option">
-          <input type="checkbox" id="review-pass-checkbox" checked>
+          <input type="checkbox" id="review-pass-checkbox">
           <span class="delegation-mode-option-body">
-            <span class="delegation-mode-option-label">Review pass (optional, on by default)</span>
+            <span class="delegation-mode-option-label">Review pass (optional, off by default)</span>
             <span class="delegation-mode-option-help">Routes each significant change through a reviewer agent before it's marked done. Catches bugs and regressions early; roughly 20-40% more tokens on non-trivial tasks. Turn off for speed/lowest cost.</span>
           </span>
         </label>
@@ -5631,7 +5642,7 @@ export async function startServer({
         const updated = buildClaudeMdDoctrineStandalone(
           existingClaudeMd,
           delegation_mode,
-          reviewEnabled ?? true,
+          reviewEnabled ?? false,
           root,
           sessionJournalEntries ?? 3,
         );

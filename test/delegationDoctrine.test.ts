@@ -16,6 +16,7 @@ import {
   renderDelegationDoctrine,
   upsertDelegationSection,
   readExecutionConfig,
+  readSavedReviewEnabled,
   writeExecutionConfig,
   type DoctrineRosterAgent,
 } from "../src/host/vscode/delegationDoctrine";
@@ -179,9 +180,10 @@ test("renderDelegationDoctrine('team_leads') references Direct mode, not Flat mo
 // either base mode; on by default)
 // ---------------------------------------------------------------------------
 
-test("renderDelegationDoctrine defaults reviewEnabled to true (2nd arg omitted) and includes the Review pass section", () => {
-  const out = renderDelegationDoctrine("flat");
-  assert.ok(out.includes("## Review pass (enabled)"), "review section must be present by default");
+test("renderDelegationDoctrine defaults reviewEnabled to false (2nd arg omitted) and omits the Review pass section; passing true includes it", () => {
+  assert.ok(!renderDelegationDoctrine("flat").includes("## Review pass"), "review section must be absent by default");
+  const out = renderDelegationDoctrine("flat", true);
+  assert.ok(out.includes("## Review pass (enabled)"), "review section must be present when enabled");
   // DEFAULT_ROSTER_ROWS (the bare-install fallback) has neither `reviewer`
   // nor `uefn-auditor` (both are deliberately excluded from the Specialist
   // roster table), so the section must fall back to the generic phrase
@@ -578,24 +580,24 @@ test("renderDelegationDoctrine's worker-leaf section lands after the mode sectio
 // execution config round-trip
 // ---------------------------------------------------------------------------
 
-test("readExecutionConfig defaults to flat + reviewEnabled:true when no file exists", () => {
+test("readExecutionConfig defaults to flat + reviewEnabled:false when no file exists", () => {
   const root = tmpRoot();
   try {
     const claudeDir = path.join(root, ".claude");
     const config = readExecutionConfig(claudeDir);
-    assert.deepEqual(config, { delegation_mode: "flat", reviewEnabled: true, sessionJournalEntries: 3 });
+    assert.deepEqual(config, { delegation_mode: "flat", reviewEnabled: false, sessionJournalEntries: 3 });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("writeExecutionConfig then readExecutionConfig round-trips team_leads (reviewEnabled defaults true when not written)", () => {
+test("writeExecutionConfig then readExecutionConfig round-trips team_leads (reviewEnabled defaults false when not written)", () => {
   const root = tmpRoot();
   try {
     const claudeDir = path.join(root, ".claude");
     writeExecutionConfig(claudeDir, { delegation_mode: "team_leads" });
     const config = readExecutionConfig(claudeDir);
-    assert.deepEqual(config, { delegation_mode: "team_leads", reviewEnabled: true, sessionJournalEntries: 3 });
+    assert.deepEqual(config, { delegation_mode: "team_leads", reviewEnabled: false, sessionJournalEntries: 3 });
 
     const onDisk = JSON.parse(
       fs.readFileSync(path.join(claudeDir, "tycoon", "execution.json"), "utf8")
@@ -613,7 +615,7 @@ test("readExecutionConfig tolerates invalid JSON by falling back to the default"
     fs.mkdirSync(path.join(claudeDir, "tycoon"), { recursive: true });
     fs.writeFileSync(path.join(claudeDir, "tycoon", "execution.json"), "{ not valid json");
     const config = readExecutionConfig(claudeDir);
-    assert.deepEqual(config, { delegation_mode: "flat", reviewEnabled: true, sessionJournalEntries: 3 });
+    assert.deepEqual(config, { delegation_mode: "flat", reviewEnabled: false, sessionJournalEntries: 3 });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -677,7 +679,7 @@ test("writeExecutionConfig preserves an unrelated key (e.g. projectPlanEnabled) 
     assert.deepEqual(onDisk, { delegation_mode: "team_leads", projectPlanEnabled: true });
 
     const config = readExecutionConfig(claudeDir);
-    assert.deepEqual(config, { delegation_mode: "team_leads", reviewEnabled: true, sessionJournalEntries: 3 });
+    assert.deepEqual(config, { delegation_mode: "team_leads", reviewEnabled: false, sessionJournalEntries: 3 });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -865,7 +867,7 @@ test("renderDelegationDoctrine with the 5th arg omitted is byte-identical to exp
   for (const mode of DELEGATION_MODES) {
     assert.equal(
       renderDelegationDoctrine(mode),
-      renderDelegationDoctrine(mode, true, undefined, undefined, 3),
+      renderDelegationDoctrine(mode, false, undefined, undefined, 3),
       `mode=${mode}: omitted 5th arg must match explicit 3`
     );
   }
@@ -1070,5 +1072,21 @@ test("doctrine output has no TycoonAgents-repo paths and keeps the tiering polic
       assert.equal(out.includes(leak), false, `${leak} must not appear (mode=${mode})`);
     }
     assert.ok(/review agent on Sonnet/i.test(out) && /review agent on Haiku/i.test(out));
+  }
+});
+
+test("readSavedReviewEnabled returns only an explicit saved boolean, so install/repair keeps the user's choice", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tycoon-review-saved-"));
+  try {
+    const claudeDir = path.join(dir, ".claude");
+    assert.equal(readSavedReviewEnabled(claudeDir), undefined);
+    writeExecutionConfig(claudeDir, { delegation_mode: "flat" });
+    assert.equal(readSavedReviewEnabled(claudeDir), undefined);
+    writeExecutionConfig(claudeDir, { reviewEnabled: true });
+    assert.equal(readSavedReviewEnabled(claudeDir), true);
+    writeExecutionConfig(claudeDir, { reviewEnabled: false });
+    assert.equal(readSavedReviewEnabled(claudeDir), false);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -73,6 +73,10 @@ function makeRosterFixture(): { projectDir: string; rosterDir: string } {
   return { projectDir, rosterDir };
 }
 
+function setReviewEnabled(projectDir: string, enabled: boolean): void {
+  writeFileSync(join(projectDir, ".claude", "tycoon", "execution.json"), JSON.stringify({ reviewEnabled: enabled }), "utf8");
+}
+
 test("resolves a 3-agent roster: openai vendor, anthropic vendor, no-vendor default", async () => {
   const { generateCodexConfig } = await dynamicImport(SCRIPT_URL);
   const { projectDir } = makeRosterFixture();
@@ -249,6 +253,7 @@ test("routing.json override: agents.<id>.model replaces the openai specialist's 
 test("AGENTS.md block carries briefing, narrow-exception, cost, verify and review guidance with no Claude-only terms", async () => {
   const { generateCodexConfig } = await dynamicImport(SCRIPT_URL);
   const { projectDir } = makeRosterFixture();
+  setReviewEnabled(projectDir, true);
   try {
     const { agentsMdBlock } = generateCodexConfig({ projectDir });
     for (const heading of [
@@ -303,6 +308,7 @@ test("upsertCodexBlock replaces only the managed block and preserves user text",
 test("review line names the reviewer id found in the roster", async () => {
   const { generateCodexConfig } = await dynamicImport(SCRIPT_URL);
   const { projectDir, rosterDir } = makeRosterFixture();
+  setReviewEnabled(projectDir, true);
   try {
     assert.match(generateCodexConfig({ projectDir }).agentsMdBlock, /\(codex-reviewer\)/);
     writeFileSync(join(rosterDir, "reviewer.md"), "---\nname: reviewer\n---\n\n# Reviewer\n\nReviews changes.\n", "utf8");
@@ -341,5 +347,24 @@ test("writeFileAtomic removes the temp file when rename throws", async () => {
     assert.equal(readFileSync(dest, "utf8"), "ok");
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("review off (default or explicit): AGENTS.md block dispatches no review and names no reviewer; review on keeps the review line", async () => {
+  const { generateCodexConfig } = await dynamicImport(SCRIPT_URL);
+  const { projectDir } = makeRosterFixture();
+  try {
+    for (const prepare of [() => {}, () => setReviewEnabled(projectDir, false)]) {
+      prepare();
+      const off = generateCodexConfig({ projectDir }).agentsMdBlock;
+      assert.doesNotMatch(off, /one review pass/);
+      assert.doesNotMatch(off, /the reviewer specialist/);
+      assert.match(off.replace(/\s+/g, " "), /only when the user asks for a review/);
+      assert.ok(off.includes("### Verify and review"));
+    }
+    setReviewEnabled(projectDir, true);
+    assert.match(generateCodexConfig({ projectDir }).agentsMdBlock, /one review pass by the reviewer specialist \(codex-reviewer\)/);
+  } finally {
+    rmSync(projectDir, { recursive: true, force: true });
   }
 });

@@ -676,7 +676,7 @@ the agent's report claimed.`;
  * include the `<!-- tycoon:delegation -->` markers — use
  * {@link upsertDelegationSection} to splice it into a CLAUDE.md.
  *
- * `reviewEnabled` (default `true`, matching execution.json's default)
+ * `reviewEnabled` (default `false`, matching execution.json's default)
  * composes with either mode: when true, {@link REVIEW_SECTION} is appended
  * after the mode-specific section; when false, it's omitted entirely.
  *
@@ -714,7 +714,7 @@ the agent's report claimed.`;
  */
 export function renderDelegationDoctrine(
   mode: DelegationMode,
-  reviewEnabled = true,
+  reviewEnabled = false,
   rosterAgents?: DoctrineRosterAgent[],
   reviewAgentId?: string,
   sessionJournalEntries = 3,
@@ -784,7 +784,7 @@ export function upsertDelegationSection(
 }
 
 /** Default execution config used when none has been written yet. */
-const DEFAULT_EXECUTION_CONFIG: ExecutionConfig = { delegation_mode: "flat", reviewEnabled: true, sessionJournalEntries: 3 };
+const DEFAULT_EXECUTION_CONFIG: ExecutionConfig = { delegation_mode: "flat", reviewEnabled: false, sessionJournalEntries: 3 };
 
 /** Resolve the path to `<claudeDirPath>/tycoon/execution.json`. */
 function executionConfigPath(claudeDirPath: string): string {
@@ -792,18 +792,35 @@ function executionConfigPath(claudeDirPath: string): string {
 }
 
 /**
+ * The explicit `reviewEnabled` boolean saved in execution.json, or
+ * `undefined` when the file/key is absent or not a boolean. Lets install and
+ * repair keep a user's saved choice (on or off) instead of re-seeding it.
+ */
+export function readSavedReviewEnabled(claudeDirPath: string): boolean | undefined {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(executionConfigPath(claudeDirPath), "utf8"));
+    if (parsed !== null && typeof parsed === "object" && typeof parsed.reviewEnabled === "boolean") {
+      return parsed.reviewEnabled;
+    }
+  } catch {
+    // Missing file or invalid JSON -> no saved choice.
+  }
+  return undefined;
+}
+
+/**
  * Read `.claude/tycoon/execution.json`. Tolerant of a missing file, a
  * missing directory, or invalid JSON — all of those fall back to the
- * default (`{ delegation_mode: "flat", reviewEnabled: true }`) rather than
+ * default (`{ delegation_mode: "flat", reviewEnabled: false }`) rather than
  * throwing. Each field is resolved independently (not all-or-nothing): a
  * file that only ever had `reviewEnabled` written to it (e.g. via
  * `writeExecutionConfig(dir, { reviewEnabled: false })` before
  * `delegation_mode` was ever persisted) still reads back that value, with
  * `delegation_mode` falling back to `"flat"`.
  *
- * `reviewEnabled` defaults to `true` whenever the key is absent/non-boolean
- * on disk — the Review pass is on by default, so a project that has never
- * touched the toggle (or predates it) reads as enabled.
+ * `reviewEnabled` defaults to `false` whenever the key is absent/non-boolean
+ * on disk — the Review pass is off by default, so a project that has never
+ * touched the toggle reads as disabled. An explicit saved boolean is kept.
  */
 export function readExecutionConfig(claudeDirPath: string): ExecutionConfig {
   try {
@@ -812,7 +829,7 @@ export function readExecutionConfig(claudeDirPath: string): ExecutionConfig {
     if (parsed !== null && typeof parsed === "object") {
       return {
         delegation_mode: DELEGATION_MODES.includes(parsed.delegation_mode) ? parsed.delegation_mode : "flat",
-        reviewEnabled: typeof parsed.reviewEnabled === "boolean" ? parsed.reviewEnabled : true,
+        reviewEnabled: typeof parsed.reviewEnabled === "boolean" ? parsed.reviewEnabled : false,
         sessionJournalEntries:
           typeof parsed.sessionJournalEntries === "number" &&
           Number.isInteger(parsed.sessionJournalEntries) &&

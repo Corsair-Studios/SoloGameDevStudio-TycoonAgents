@@ -222,12 +222,12 @@ test("launch gate: OPENCODE_HARNESS_AVAILABLE ships false", () => {
   assert.equal(OPENCODE_HARNESS_AVAILABLE, false);
 });
 
-test("launch gate: buildHarnessOptions disables OpenCode with the Coming Soon label; gate=true restores Experimental", () => {
+test("launch gate: buildHarnessOptions disables OpenCode with the Coming Soon label; gate=true restores OpenCode", () => {
   const gated = buildHarnessOptions(false);
   const oc = gated.find((o) => o.id === "opencode");
   assert.deepEqual(oc, { id: "opencode", label: "OpenCode (Coming Soon)", disabled: true });
   assert.equal(gated.find((o) => o.id === "claude-code")?.disabled, undefined);
-  assert.equal(gated.find((o) => o.id === "codex")?.label, "Codex (Experimental)");
+  assert.equal(gated.find((o) => o.id === "codex")?.label, "Codex");
   assert.deepEqual(gated.map((o) => o.id), ["claude-code", "codex", "opencode"]);
   assert.deepEqual(buildHarnessOptions(true).map((o) => o.id), ["claude-code", "codex", "opencode"]);
   assert.deepEqual(buildHarnessOptions(true).find((o) => o.id === "opencode"), { id: "opencode", label: "OpenCode (Experimental)" });

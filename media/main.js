@@ -2912,7 +2912,7 @@ if (typeof module !== "undefined" && module.exports) {
     const fromCodex = msg.from === "codex";
     const names = fromCodex
       ? { from: "Codex", selected: "Claude Code", target: "claude-code", label: "Switch to Claude Code" }
-      : { from: "Claude Code", selected: "Codex", target: "codex", label: "Switch to Codex (Experimental)" };
+      : { from: "Claude Code", selected: "Codex", target: "codex", label: "Switch to Codex" };
     const notice = document.createElement("div");
     notice.id = "harness-mismatch-notice";
     notice.className = "catalog-notice legacy-artifacts-notice harness-mismatch-notice";
@@ -2920,7 +2920,7 @@ if (typeof module !== "undefined" && module.exports) {
     const text = document.createElement("span");
     text.className = "legacy-artifacts-notice-text";
     text.textContent = "You sent a prompt from " + names.from + ", but this project's harness is set to " +
-      names.selected + (names.selected === "Codex" ? " (Experimental)" : "") + ", so it won't show on the stage.";
+      names.selected + ", so it won't show on the stage.";
     notice.appendChild(text);
     const addBtn = (label, onClick) => {
       const b = document.createElement("button");
@@ -3626,15 +3626,15 @@ if (typeof module !== "undefined" && module.exports) {
     );
     const delegation_mode = teamLeadsRadio && teamLeadsRadio.checked ? "team_leads" : "flat";
     vscode.postMessage({ type: "installHooks", delegation_mode });
-    // installHooks always turns the Review pass on by default (see
-    // panel.ts's _handleInstallHooks). If the pre-install checkbox was
-    // unchecked, follow up with a setReviewEnabled(false) — messages are
-    // processed in order, so this lands right after install completes.
+    // The Review pass is off by default (see panel.ts's _handleInstallHooks).
+    // If the pre-install checkbox was checked, follow up with a
+    // setReviewEnabled(true) — messages are processed in order, so this
+    // lands right after install completes.
     const reviewPassCheckbox = /** @type {HTMLInputElement|null} */ (
       document.getElementById("review-pass-checkbox")
     );
-    if (reviewPassCheckbox && !reviewPassCheckbox.checked) {
-      vscode.postMessage({ type: "setReviewEnabled", enabled: false });
+    if (reviewPassCheckbox && reviewPassCheckbox.checked) {
+      vscode.postMessage({ type: "setReviewEnabled", enabled: true  });
     }
   });
 
@@ -3772,11 +3772,11 @@ if (typeof module !== "undefined" && module.exports) {
       ? lastSettings.harness.options
       : [
           { id: "claude-code", label: "Claude Code" },
-          { id: "codex", label: "Codex (Experimental)" },
+          { id: "codex", label: "Codex" },
           { id: "opencode", label: "OpenCode (Coming Soon)", disabled: true },
         ];
     var match = harnessOptions.find(function (opt) { return opt.id === harnessEffective; });
-    var harnessLabel = match ? match.label : (harnessEffective === "opencode" ? "OpenCode (Experimental)" : (harnessEffective === "codex" ? "Codex (Experimental)" : "Claude Code"));
+    var harnessLabel = match ? match.label : (harnessEffective === "opencode" ? "OpenCode (Experimental)" : (harnessEffective === "codex" ? "Codex" : "Claude Code"));
     var line = document.createElement("p");
     line.className = "routing-agents-harness-line";
     line.textContent = "Runs on " + harnessLabel + " · ";
@@ -25495,7 +25495,7 @@ function themeAnimPreviewDraw(player) {
       ? harness.options
       : [
           { id: "claude-code", label: "Claude Code" },
-          { id: "codex", label: "Codex (Experimental)" },
+          { id: "codex", label: "Codex" },
           { id: "opencode", label: "OpenCode (Coming Soon)", disabled: true },
         ];
     harnessOptions.forEach((opt) => {
@@ -25534,9 +25534,6 @@ function themeAnimPreviewDraw(player) {
     if (harnessSelect.value === "opencode") {
       harnessHint.textContent +=
         " OpenCode hosting is experimental and not yet thoroughly tested.";
-    } else if (harnessSelect.value === "codex") {
-      harnessHint.textContent +=
-        " Codex hosting is experimental and not yet thoroughly tested.";
     }
     harnessRow.appendChild(harnessHint);
     // Launch gate: host-supplied one-line notice when a stored OpenCode choice was resolved to Claude Code.
@@ -27757,7 +27754,7 @@ function themeAnimPreviewDraw(player) {
     delegSection.appendChild(delegRow);
     setupConfigEl.appendChild(delegSection);
 
-    // ── 1.5b. Review pass (optional, on by default) ──
+    // ── 1.5b. Review pass (optional, off by default) ──
     // Composes with either delegation style above rather than being a third
     // radio — a separate checkbox row in the same "Delegation style" section.
     const reviewRow = document.createElement("div");
@@ -27770,8 +27767,8 @@ function themeAnimPreviewDraw(player) {
     const reviewCheckbox = document.createElement("input");
     reviewCheckbox.type = "checkbox";
     reviewCheckbox.id = "review-pass-enabled-checkbox";
-    // Absent/undefined reads as enabled — the toggle is on by default.
-    reviewCheckbox.checked = lastSettings.reviewEnabled !== false;
+    // Absent/undefined reads as disabled — the toggle is off by default.
+    reviewCheckbox.checked = lastSettings.reviewEnabled === true;
     reviewCheckbox.addEventListener("change", () => {
       reviewCheckbox.disabled = true;
       vscode.postMessage({ type: "setReviewEnabled", enabled: reviewCheckbox.checked });
@@ -27780,7 +27777,7 @@ function themeAnimPreviewDraw(player) {
     reviewBody.className = "delegation-mode-option-body";
     const reviewLabelSpan = document.createElement("span");
     reviewLabelSpan.className = "delegation-mode-option-label";
-    reviewLabelSpan.textContent = "Review pass (optional, on by default)";
+    reviewLabelSpan.textContent = "Review pass (optional, off by default)";
     const reviewHelpSpan = document.createElement("span");
     reviewHelpSpan.className = "delegation-mode-option-help";
     reviewHelpSpan.textContent = "Routes each significant change through a reviewer agent before it's marked done. Catches bugs and regressions early; roughly 20-40% more tokens on non-trivial tasks. Turn off for speed/lowest cost.";

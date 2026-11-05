@@ -55,7 +55,7 @@ export interface HarnessOption {
 export function buildHarnessOptions(opencodeAvailable: boolean = isOpencodeAvailable()): HarnessOption[] {
   return [
     { id: "claude-code", label: "Claude Code" },
-    { id: "codex", label: "Codex (Experimental)" },
+    { id: "codex", label: "Codex" },
     opencodeAvailable
       ? { id: "opencode", label: "OpenCode (Experimental)" }
       : { id: "opencode", label: "OpenCode (Coming Soon)", disabled: true },

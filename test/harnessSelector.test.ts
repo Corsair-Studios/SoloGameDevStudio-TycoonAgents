@@ -108,7 +108,7 @@ test("_buildHarnessSettings: defaults to claude-code, source default, no mismatc
   const result = (TycoonPanel.prototype as any)._buildHarnessSettings.call(fake, root);
   assert.deepEqual(result.options, [
     { id: "claude-code", label: "Claude Code" },
-    { id: "codex", label: "Codex (Experimental)" },
+    { id: "codex", label: "Codex" },
     { id: "opencode", label: "OpenCode (Experimental)" },
   ]);
   assert.equal(result.opencodeAvailable, true);

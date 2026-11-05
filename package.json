@@ -1,6 +1,6 @@
 {
   "name": "tycoonagents",
-  "version": "0.0.758",
+  "version": "0.0.759",
   "private": true,
   "description": "Enforces delegation of coding work to cheaper specialist AI models, with a live tycoon-style visualization of that work as it happens.",
   "displayName": "TycoonAgents",
@@ -83,7 +83,7 @@
           "enumDescriptions": [
             "Claude Code",
             "OpenCode (Experimental) — new and not yet thoroughly tested.",
-            "Codex (Experimental) — new and not yet thoroughly tested."
+            "Codex"
           ],
           "default": "claude-code",
           "description": "Which coding agent harness TycoonAgents reads activity from: 'claude-code' watches .claude/tycoon/activity.jsonl written by the Claude Code hook; 'opencode' watches the OpenCode harness's activity log instead. The TYCOON_PROVIDER environment variable, if set, always overrides this setting."

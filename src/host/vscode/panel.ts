@@ -60,6 +60,7 @@ import {
   renderDelegationDoctrine,
   upsertDelegationSection,
   readExecutionConfig,
+  readSavedReviewEnabled,
   writeExecutionConfig,
   formatVendorModelLabel,
   type DelegationMode,
@@ -3290,7 +3291,7 @@ export class TycoonPanel {
               const updated = this._buildClaudeMdDoctrine(
                 existingClaudeMd,
                 delegation_mode,
-                reviewEnabled ?? true,
+                reviewEnabled ?? false,
                 root,
                 sessionJournalEntries ?? 3
               );
@@ -6455,7 +6456,7 @@ export class TycoonPanel {
       const updated = this._buildClaudeMdDoctrine(
         existingClaudeMd,
         delegation_mode,
-        reviewEnabled ?? true,
+        reviewEnabled ?? false,
         root,
         sessionJournalEntries ?? 3
       );
@@ -7700,12 +7701,11 @@ export class TycoonPanel {
       // just wrote into. A CLAUDE.md write failure is a USER-OWNED-file risk,
       // so it's caught independently and reported without failing the
       // (already-successful) hook install.
-      // Review pass is on by default (execution.json's reviewEnabled)
-      // whenever a project is freshly installed/repaired — the setup
-      // screen's checkbox is checked by default and, when the user
-      // unchecks it, the webview follows this installHooks message with a
-      // SET_REVIEW_ENABLED(false) that turns it back off.
-      const reviewEnabled = true;
+      // Review pass is off by default (execution.json's reviewEnabled) for
+      // a fresh install/repair; an explicit saved choice (on or off) is
+      // kept. When the user checks the setup screen's checkbox, the webview
+      // follows this installHooks message with SET_REVIEW_ENABLED(true).
+      const reviewEnabled = readSavedReviewEnabled(claudeDir) ?? false;
       const agentsDirExistedBefore = agentsDirExists(root);
       const agentFilesBefore = listAgentFiles(root);
       let claudeMdError: string | undefined;
@@ -8145,7 +8145,7 @@ export class TycoonPanel {
     // so a mode switch never silently resets the Review-pass or Session
     // Journal sections on/off.
     const execCfgForMode = readExecutionConfig(path.join(root, ".claude"));
-    const reviewEnabled = execCfgForMode.reviewEnabled ?? true;
+    const reviewEnabled = execCfgForMode.reviewEnabled ?? false;
     const sessionJournalEntries = execCfgForMode.sessionJournalEntries ?? 3;
 
     let claudeMdError: string | undefined;
@@ -8185,7 +8185,7 @@ export class TycoonPanel {
   }
 
   /**
-   * Toggle the optional "Review pass" (on by default). Mirrors
+   * Toggle the optional "Review pass" (off by default). Mirrors
    * `_handleSetDelegationMode`'s wiring exactly, but for the orthogonal
    * `reviewEnabled` flag: persists `execution.json` (merge-safe — does not
    * touch `delegation_mode`), installs/removes the `reviewer` agent file,
@@ -8254,6 +8254,20 @@ export class TycoonPanel {
       fs.writeFileSync(claudeMdPath, updated);
     } catch (err) {
       claudeMdError = String(err);
+    }
+
+    // Keep AGENTS.md's Codex block in step so Codex sessions stop (or start)
+    // being told to run a review pass. Only when the block already exists.
+    try {
+      const agentsMdText = fs.readFileSync(path.join(root, "AGENTS.md"), "utf8");
+      if (
+        agentsMdText.includes("<!-- TYCOON-CODEX-MANAGED:START -->") &&
+        agentsMdText.includes("<!-- TYCOON-CODEX-MANAGED:END -->")
+      ) {
+        this._runCodexConfigGenerator(root);
+      }
+    } catch {
+      // No AGENTS.md -> nothing to refresh.
     }
 
     void this._panel.webview.postMessage({
@@ -8327,7 +8341,7 @@ export class TycoonPanel {
     }
 
     const mode = readExecutionConfig(path.join(root, ".claude")).delegation_mode;
-    const reviewEnabled = readExecutionConfig(path.join(root, ".claude")).reviewEnabled ?? true;
+    const reviewEnabled = readExecutionConfig(path.join(root, ".claude")).reviewEnabled ?? false;
 
     let claudeMdError: string | undefined;
     try {
@@ -9144,9 +9158,9 @@ export class TycoonPanel {
     }
 
     const execCfg =
-      root !== "" ? readExecutionConfig(path.join(root, ".claude")) : { delegation_mode: "flat" as const, reviewEnabled: true };
+      root !== "" ? readExecutionConfig(path.join(root, ".claude")) : { delegation_mode: "flat" as const, reviewEnabled: false };
     const delegation_mode = execCfg.delegation_mode;
-    const reviewEnabled = execCfg.reviewEnabled ?? true;
+    const reviewEnabled = execCfg.reviewEnabled ?? false;
     const sessionJournalEntries = execCfg.sessionJournalEntries ?? 3;
 
     // Generic foreign-managed-block detection — same read/compute
@@ -10755,7 +10769,7 @@ export class TycoonPanel {
         themeServiceEndpointHost: this._themeServiceHost.getEffectiveEndpointHost() ?? null,
         hook: { installed: this._hookInstalled(root), lastActivityAt },
         hookHealth: { healthy: issueCount === 0, issueCount },
-        delegation: { mode: execCfg.delegation_mode, reviewEnabled: execCfg.reviewEnabled ?? true },
+        delegation: { mode: execCfg.delegation_mode, reviewEnabled: execCfg.reviewEnabled ?? false },
         doctrine: { foreignBlocks: foreignManagedBlocks },
         contextBudget,
         roster: { agentIds, keywordIds, danglingKeywordRefs, agentsWithNoKeywords, agentsPendingReconcile },
@@ -11561,9 +11575,9 @@ export class TycoonPanel {
           </span>
         </label>
         <label class="delegation-mode-option review-pass-option">
-          <input type="checkbox" id="review-pass-checkbox" checked>
+          <input type="checkbox" id="review-pass-checkbox">
           <span class="delegation-mode-option-body">
-            <span class="delegation-mode-option-label">Review pass (optional, on by default)</span>
+            <span class="delegation-mode-option-label">Review pass (optional, off by default)</span>
             <span class="delegation-mode-option-help">Routes each significant change through a reviewer agent before it's marked done. Catches bugs and regressions early; roughly 20-40% more tokens on non-trivial tasks. Turn off for speed/lowest cost.</span>
           </span>
         </label>

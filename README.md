@@ -26,7 +26,7 @@ Tested on Windows. macOS and Linux support is experimental.
 **Ways to run it:**
 - **VS Code extension with Claude Code** — install the extension and open the panel (see Setup below).
 - **Standalone app** — `node standalone/src/cli.mjs watch .`, no VS Code required; see [`standalone/README.md`](standalone/README.md).
-- **Codex (Experimental) as the harness** — `--provider codex`; see "Multi-LLM" below.
+- **Codex as the harness** — `--provider codex`; see "Multi-LLM" below.
 
 ## Mandatory delegation & orchestration
 
@@ -74,11 +74,11 @@ All the reasoning happens in Claude Code; the extension only reads and displays 
 
 ## Self-contained & hook-driven
 
-The panel itself makes **no AI calls.** Model calls go only through the CLIs and servers you configure (relays and the dispatcher forward your briefs to them). The only optional network features are theme generation (the hosted Theme Service) and the Routing view's "Test connection". Everything you see is built from **hooks** that record when agents are dispatched, work, and finish, captured by whichever harness is installed (Claude Code or Codex (Experimental)). The visualization and metrics are a normalized view of those records, nothing more.
+The panel itself makes **no AI calls.** Model calls go only through the CLIs and servers you configure (relays and the dispatcher forward your briefs to them). The only optional network features are theme generation (the hosted Theme Service) and the Routing view's "Test connection". Everything you see is built from **hooks** that record when agents are dispatched, work, and finish, captured by whichever harness is installed (Claude Code or Codex). The visualization and metrics are a normalized view of those records, nothing more.
 
 ## Setup
 
-Requirements: VS Code with the Claude Code extension (or Codex (Experimental)), and **Node.js 18 or newer** (LTS recommended, from nodejs.org), because the activity hooks and bridge servers are Node scripts. On Windows, keep the installer's "Add to PATH" option on. Restart VS Code after installing Node so it picks up the new PATH. If Node is missing, **Hook health** in Settings shows "Node.js not found for hooks".
+Requirements: VS Code with the Claude Code extension (or Codex), and **Node.js 18 or newer** (LTS recommended, from nodejs.org), because the activity hooks and bridge servers are Node scripts. On Windows, keep the installer's "Add to PATH" option on. Restart VS Code after installing Node so it picks up the new PATH. If Node is missing, **Hook health** in Settings shows "Node.js not found for hooks".
 
 Install the extension and open the TycoonAgents panel. First run (or the **Repair** button) sets everything up in your project:
 
@@ -182,7 +182,7 @@ A teammate who clones the project and opens TycoonAgents sees a **"Team setup ch
 
 A provider abstraction so agent activity can come from Claude Code, other agent harnesses, or other models.
 
-Supported harnesses: Claude Code and Codex (Experimental). OpenCode: coming soon. Gemini / Antigravity agent as harness: planned (not yet available); the Antigravity editor itself is supported.
+Supported harnesses: Claude Code and Codex. OpenCode: coming soon. Gemini / Antigravity agent as harness: planned (not yet available); the Antigravity editor itself is supported.
 
 ### Multi-model delegation
 
@@ -201,9 +201,9 @@ Each agent has its own routing (vendor and model) plus an ordered fallback chain
 
 OpenCode support is coming soon. It appears in the harness picker as "OpenCode (Coming Soon)" and can't be selected in the VS Code panel or the standalone app. Projects set to OpenCode run on Claude Code, with a notice, until OpenCode support is available.
 
-### Codex host (Experimental)
+### Codex host
 
-TycoonAgents can also read activity from [Codex CLI](https://github.com/openai/codex) via the same provider abstraction, alongside Claude Code. Codex support is Experimental — select it via `TYCOON_PROVIDER=codex`, the VS Code setting `tycoonagents.provider: "codex"`, or `--provider codex` in the standalone host. See [`docs/codex-host.md`](docs/codex-host.md) for provider-selection precedence, per-agent attribution reconstruction, the known "stopped/reopened" display tradeoff, and binary-discovery paths.
+TycoonAgents can also read activity from [Codex CLI](https://github.com/openai/codex) via the same provider abstraction, alongside Claude Code. Select Codex via `TYCOON_PROVIDER=codex`, the VS Code setting `tycoonagents.provider: "codex"`, or `--provider codex` in the standalone host. See [`docs/codex-host.md`](docs/codex-host.md) for provider-selection precedence, per-agent attribution reconstruction, the known "stopped/reopened" display tradeoff, and binary-discovery paths.
 
 Any recent Codex CLI works: a runtime launcher discovers the Codex binary and picks the connection method automatically (`mcp-server` or an `app-server`-based adapter); set `TYCOON_CODEX_BACKEND` to `mcp-server` or `app-server` to override. See [`docs/codex-host.md`](docs/codex-host.md) for the launcher internals and discovery order.
 
@@ -213,7 +213,7 @@ Adding a Codex agent from the Agents screen installs the launcher-based Codex MC
 
 ### Routing walkthrough
 
-1. In **Settings**, use **"Which tool runs your agents?"** to pick the harness (Claude Code or Codex (Experimental); OpenCode is shown as "OpenCode (Coming Soon)" and can't be selected).
+1. In **Settings**, use **"Which tool runs your agents?"** to pick the harness (Claude Code or Codex; OpenCode is shown as "OpenCode (Coming Soon)" and can't be selected).
 2. Open the **Routing** view from the panel menu.
 3. Fill in the **orchestrator** slot at the top the same way as any agent row below.
 4. For a per-agent model, pick **Vendor** then choose a preset from the **Model** dropdown.
