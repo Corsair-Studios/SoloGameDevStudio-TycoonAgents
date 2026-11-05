@@ -7,7 +7,7 @@
 // explicit file list to `node --test`, so behavior is identical on
 // Node 20, 22, and 24 and on any shell (bash, PowerShell, cmd).
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +36,34 @@ function collect(dir) {
   return files;
 }
 
+// Windows rejects command lines over 32767 characters (spawnSync ENAMETOOLONG),
+// and CI checkouts have long absolute paths. Keep each `node --test` spawn's
+// file list under this many characters (well below the limit, leaving room
+// for the executable path, flags and extraArgs).
+export const COMMAND_LINE_BUDGET = 8000;
+
+// Split files into consecutive batches whose joined length (each file plus a
+// separating space) stays within budget. A single oversized file still gets
+// its own batch. Order is preserved and every file appears exactly once.
+export function batchFiles(files, budget = COMMAND_LINE_BUDGET) {
+  const batches = [];
+  let current = [];
+  let length = 0;
+  for (const file of files) {
+    const cost = file.length + 1;
+    if (current.length > 0 && length + cost > budget) {
+      batches.push(current);
+      current = [];
+      length = 0;
+    }
+    current.push(file);
+    length += cost;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
+function main() {
 const files = collect(testDir).sort();
 
 if (files.length === 0) {
@@ -67,27 +95,57 @@ const hardeningArgs = [
 // directory and skip the real `claude` binary for every test process.
 const claudeSandbox = mkdtempSync(path.join(os.tmpdir(), 'tycoon-test-claude-'));
 
-const result = spawnSync(process.execPath, ['--test', ...hardeningArgs, ...extraArgs, ...files], {
-  stdio: 'inherit',
-  env: { ...process.env, CLAUDE_CONFIG_DIR: claudeSandbox, TYCOON_CLAUDE_BIN: 'none', USERPROFILE: path.join(claudeSandbox, 'home'), HOME: path.join(claudeSandbox, 'home'), TYCOON_TEST_HOME_SANDBOX: '1', TYCOON_MCP_VERIFY_DELAY_MS: '0' },
-});
+const extraLength = extraArgs.join(' ').length + hardeningArgs.join(' ').length;
+const batches = batchFiles(files, Math.max(1000, COMMAND_LINE_BUDGET - extraLength));
+const env = { ...process.env, CLAUDE_CONFIG_DIR: claudeSandbox, TYCOON_CLAUDE_BIN: 'none', USERPROFILE: path.join(claudeSandbox, 'home'), HOME: path.join(claudeSandbox, 'home'), TYCOON_TEST_HOME_SANDBOX: '1', TYCOON_MCP_VERIFY_DELAY_MS: '0' };
+
+let failedStatus = 0;
+let launchError = null;
+let signal = null;
+for (let i = 0; i < batches.length; i++) {
+  if (batches.length > 1) {
+    console.error(`
+=== test batch ${i + 1}/${batches.length} (${batches[i].length} files) ===`);
+  }
+  const result = spawnSync(process.execPath, ['--test', ...hardeningArgs, ...extraArgs, ...batches[i]], { stdio: 'inherit', env });
+  if (result.error) { launchError = result.error; break; }
+  if (result.signal) { signal = result.signal; break; }
+  if (result.status !== 0 && failedStatus === 0) failedStatus = result.status ?? 1;
+}
 try { rmSync(claudeSandbox, { recursive: true, force: true }); } catch { /* best effort */ }
 
-if (result.error) {
-  console.error(`Failed to launch the test runner: ${result.error.message}`);
+if (launchError) {
+  console.error(`Failed to launch the test runner: ${launchError.message}`);
   process.exit(1);
 }
-if (result.signal) {
-  console.error(`Test run was terminated by signal ${result.signal}.`);
+if (signal) {
+  console.error(`Test run was terminated by signal ${signal}.`);
   process.exit(1);
 }
-if (result.status !== 0) {
+if (failedStatus !== 0) {
   console.error(
-    `Test run failed (exit code ${result.status}). If a specific file's name is ` +
+    `Test run failed (exit code ${failedStatus}). If a specific file's name is ` +
       `followed by a timeout duration above (e.g. "test timed out after 60000ms"), ` +
       "that file is hanging — fix the leak (open handle/timer/unsettled promise) " +
       'before re-running, or narrow the run to it with `npm run test:fast -- <pattern>`.',
   );
 }
 
-process.exit(result.status ?? 1);
+process.exit(failedStatus);
+}
+
+// Run only when executed directly; tests import batchFiles without side effects.
+function isRunDirectly() {
+  if (!process.argv[1]) return false;
+  const norm = (p) => (process.platform === 'win32' ? p.toLowerCase() : p);
+  const self = fileURLToPath(import.meta.url);
+  try {
+    return norm(realpathSync(process.argv[1])) === norm(realpathSync(self));
+  } catch {
+    return norm(path.resolve(process.argv[1])) === norm(self);
+  }
+}
+const isMainModule = isRunDirectly();
+if (isMainModule) {
+  main();
+}
